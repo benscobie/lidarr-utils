@@ -41,7 +41,7 @@ docker-compose up
 
 ### Config File
 
-Create a `config.yaml` file:
+Create a `config.yaml` file (or copy from `config.example.yaml`):
 
 ```yaml
 # Lidarr connection settings
@@ -145,7 +145,7 @@ docker-compose up -d
    - MusicBrainz Recording IDs (preferred)
    - MusicBrainz Track IDs
    - Normalized title matching
-5. **Cleanup**: Optionally removes duplicate singles and adds to exclusion list
+5. **Cleanup**: Removes duplicate singles and optionally adds to exclusion list
 
 ## Deletion Behavior
 

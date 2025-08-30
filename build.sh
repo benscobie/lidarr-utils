@@ -60,9 +60,9 @@ cd $BUILD_DIR
 
 for file in *; do
     if [[ $file == *".exe" ]]; then
-        zip "${file%.exe}.zip" "$file" ../README.md ../LICENSE ../config.yaml
+        zip "${file%.exe}.zip" "$file" ../README.md ../LICENSE ../config.example.yaml
     else
-        tar -czf "${file}.tar.gz" "$file" ../README.md ../LICENSE ../config.yaml
+        tar -czf "${file}.tar.gz" "$file" ../README.md ../LICENSE ../config.example.yaml
     fi
 done
 

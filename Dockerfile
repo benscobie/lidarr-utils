@@ -34,7 +34,7 @@ RUN addgroup -g 1001 -S appgroup && \
 COPY --from=builder /app/lidarr-deduper .
 
 # Copy example config
-COPY --from=builder /app/config.yaml ./config.example.yaml
+COPY --from=builder /app/config.example.yaml ./config.example.yaml
 
 # Create directory for config
 RUN mkdir -p /app/config && \

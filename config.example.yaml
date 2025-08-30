@@ -1,0 +1,20 @@
+# Example configuration file for Lidarr Deduper
+# Copy this file to config.yaml and adjust the settings for your environment
+
+# Lidarr connection settings
+lidarr:
+  url: "http://localhost:8686"  # Your Lidarr URL
+  api_key: "your-api-key-here"  # Your Lidarr API key
+
+# Application settings
+app:
+  dry_run: true                   # Set to false to actually process duplicates
+  add_import_exclusion: false     # Set to true to add removed singles to import exclusion list
+  log_level: "info"               # Log level: debug, info, warn, error
+  log_file: "lidarr-deduper.log" # Path to log file (optional)
+
+# Scheduling settings
+schedule:
+  enabled: false                  # Enable scheduled runs
+  cron: "0 2 * * *"              # Run daily at 2 AM (when enabled)
+  run_once: true                  # Run once and exit (overrides schedule when true)
