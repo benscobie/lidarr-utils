@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  lidarr-deduper:
+    build: .
+    container_name: lidarr-deduper
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config  # Mount config directory
+    environment:
+      # Lidarr connection (can also be set in config.yaml)
+      - LIDARR_DEDUPE_LIDARR_URL=http://lidarr:8686
+      - LIDARR_DEDUPE_LIDARR_API_KEY=your-api-key-here
+      
+      # App settings
+      - LIDARR_DEDUPE_APP_DRY_RUN=true
+      - LIDARR_DEDUPE_APP_DELETE_MODE=delete
+      - LIDARR_DEDUPE_APP_LOG_LEVEL=info
+      
+      # Schedule settings (for scheduled runs)
+      - LIDARR_DEDUPE_SCHEDULE_ENABLED=false
+      - LIDARR_DEDUPE_SCHEDULE_CRON=0 2 * * *
+      - LIDARR_DEDUPE_SCHEDULE_RUN_ONCE=true
+      
+      # Timezone
+      - TZ=America/New_York
+    
+    command: 
+      - "--config=/app/config/config.yaml"
+      - "--dry-run=true"
+    
+    # Uncomment to run on a schedule instead of once
+    # command: 
+    #   - "--config=/app/config/config.yaml"
+    #   - "--cron=0 2 * * *"  # Daily at 2 AM
+    #   - "--dry-run=false"
+    
+    networks:
+      - lidarr-network
+
+  # Example Lidarr service (if not already running elsewhere)
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - ./lidarr-config:/config
+      - ./music:/music
+      - ./downloads:/downloads
+    ports:
+      - "8686:8686"
+    restart: unless-stopped
+    networks:
+      - lidarr-network
+
+networks:
+  lidarr-network:
+    driver: bridge
