@@ -182,7 +182,7 @@ This was a dry run. To actually process duplicates, run with --dry-run=false
 
 ## Requirements
 
-- Go 1.21+ (if building from source)
+- Go 1.24+ (if building from source)
 - Access to Lidarr API
 - Lidarr v1.0+
 
