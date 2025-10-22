@@ -1,0 +1,22 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    ":renovatePrefix",
+    ":timezone(Europe/London)",
+    ":reviewer(ben)"
+  ],
+  "automergeStrategy": "squash",
+  "docker-compose": {
+    "digest": {
+      "enabled": false
+    }
+  },
+  "packageRules": [
+    {
+      "matchPackageNames": ["go", "golang"],
+      "versioning": "go",
+      "groupName": "go"
+    }
+  ]
+}
