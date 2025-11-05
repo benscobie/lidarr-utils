@@ -3,14 +3,26 @@
   "extends": [
     "config:best-practices",
     ":renovatePrefix",
+    ":automergeLinters",
     ":timezone(Europe/London)",
     ":reviewer(ben)"
   ],
+  "automergeType": "branch",
   "automergeStrategy": "squash",
+  "digest": {
+    "automerge": true
+  },
   "docker-compose": {
-    "digest": {
-      "enabled": false
-    }
+    "packageRules": [
+      {
+        "matchUpdateTypes": [
+          "pin",
+          "digest",
+          "pinDigest"
+        ],
+        "automerge": true
+      }
+    ]
   },
   "packageRules": [
     {
