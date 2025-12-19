@@ -40,7 +40,7 @@ services:
 
   # Example Lidarr service (if not already running elsewhere)
   lidarr:
-    image: lscr.io/linuxserver/lidarr:latest@sha256:47e8b286474150a42477e278be9ddd5c7956b691c8684cd0dfd1530c423a4722
+    image: lscr.io/linuxserver/lidarr:latest@sha256:ede2bb17350cc97a0d3f24389aa91803f655eac29aa022c77a71f4a61cc621e4
     container_name: lidarr
     environment:
       - PUID=1000
