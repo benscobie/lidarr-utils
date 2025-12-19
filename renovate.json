@@ -13,16 +13,7 @@
     "automerge": true
   },
   "docker-compose": {
-    "packageRules": [
-      {
-        "matchUpdateTypes": [
-          "pin",
-          "digest",
-          "pinDigest"
-        ],
-        "automerge": true
-      }
-    ]
+    "enabled": false
   },
   "packageRules": [
     {
