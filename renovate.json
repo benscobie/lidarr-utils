@@ -2,13 +2,13 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:best-practices",
-    ":renovatePrefix",
     ":automergeLinters",
     ":timezone(Europe/London)",
     ":reviewer(ben)"
   ],
   "automergeType": "branch",
   "automergeStrategy": "squash",
+  "branchPrefix": "renovate-",
   "digest": {
     "automerge": true
   },
