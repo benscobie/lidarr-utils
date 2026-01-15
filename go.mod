@@ -1,6 +1,6 @@
 module github.com/lidarr-deduper
 
-go 1.25.5
+go 1.25.6
 
 require (
 	github.com/robfig/cron/v3 v3.0.1
