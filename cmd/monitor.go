@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	artistIDStr           string
+	artistIDStrs          []string
 	allArtists            bool
 	officialOnly          bool
 	excludeSecondaryTypes []string
@@ -31,7 +31,7 @@ releases. Triggers rate-limited searches via Lidarr's command queue.`,
 }
 
 func init() {
-	monitorCmd.Flags().StringVar(&artistIDStr, "artist-id", "", "Lidarr artist ID (numeric) or MusicBrainz ID (UUID)")
+	monitorCmd.Flags().StringSliceVar(&artistIDStrs, "artist-id", nil, "Lidarr artist ID(s) — numeric or MusicBrainz UUID (repeatable, comma-separated)")
 	monitorCmd.Flags().BoolVar(&allArtists, "all", false, "process all artists")
 	monitorCmd.Flags().BoolVar(&officialOnly, "official-only", false, "only process albums with no secondary types")
 	monitorCmd.Flags().StringSliceVar(&excludeSecondaryTypes, "exclude-secondary-types", nil, "secondary types to exclude (comma-separated)")
@@ -41,7 +41,7 @@ func init() {
 }
 
 func runMonitor(cmd *cobra.Command, args []string) error {
-	if artistIDStr == "" && !allArtists {
+	if len(artistIDStrs) == 0 && !allArtists {
 		return fmt.Errorf("either --artist-id or --all is required")
 	}
 
@@ -106,11 +106,12 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 		}
 		log.Printf("Processing all %d artists", len(artistIDs))
 	} else {
-		resolvedID, err := resolveArtistID(client, artistIDStr)
+		resolved, err := resolveArtistIDs(client, artistIDStrs)
 		if err != nil {
 			return err
 		}
-		artistIDs = []int{resolvedID}
+		artistIDs = resolved
+		log.Printf("Processing %d artist(s)", len(artistIDs))
 	}
 
 	start := time.Now()
@@ -121,29 +122,6 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 
 	mon.PrintSummary(stats, time.Since(start))
 	return nil
-}
-
-func resolveArtistID(client *lidarr.Client, idStr string) (int, error) {
-	// Try as numeric Lidarr ID first
-	if id, err := strconv.Atoi(idStr); err == nil {
-		return id, nil
-	}
-
-	// Otherwise treat as MusicBrainz foreign artist ID
-	log.Printf("Resolving foreign artist ID: %s", idStr)
-	artists, err := client.GetArtists()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get artists: %w", err)
-	}
-
-	for _, a := range artists {
-		if a.ForeignID == idStr {
-			log.Printf("Resolved to: %s (ID: %d)", a.ArtistName, a.ID)
-			return a.ID, nil
-		}
-	}
-
-	return 0, fmt.Errorf("artist with foreign ID %q not found in Lidarr", idStr)
 }
 
 // artistResolver is the subset of lidarr.Client needed for ID resolution.
