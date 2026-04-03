@@ -1,4 +1,4 @@
-name: Build lidarr-deduper Docker image
+name: Build lidarr-utils Docker image
 
 on:
   push:
@@ -39,7 +39,7 @@ jobs:
         id: meta
         uses: https://code.forgejo.org/docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6
         with:
-          images: forgejo.home.arpa/ben/lidarr-deduper
+          images: forgejo.home.arpa/ben/lidarr-utils
           tags: |
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
 
