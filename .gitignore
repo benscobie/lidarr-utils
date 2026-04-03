@@ -57,6 +57,9 @@ config.json
 .env.local
 .env.*.local
 
+# Worktrees
+.worktrees/
+
 # Temporary files
 tmp/
 temp/
