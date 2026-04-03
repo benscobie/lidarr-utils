@@ -194,3 +194,94 @@ func TestSelectAlbumsToMonitor_AlbumWithNoTracks(t *testing.T) {
 		t.Fatalf("expected 1 warning for missing tracks, got %d", len(result.Warnings))
 	}
 }
+
+func TestSelectAlbumsToMonitor_ExcludeDownloadedAlbum(t *testing.T) {
+	albums := []common.Album{
+		{
+			ID: 1, Title: "Downloaded Album", AlbumType: "Album", HasFiles: true,
+			Tracks: []common.Track{
+				{ID: 1, Title: "Track 1", ForeignRecordingID: "rec-1"},
+				{ID: 2, Title: "Track 2", ForeignRecordingID: "rec-2"},
+			},
+		},
+		{
+			ID: 2, Title: "New Album", AlbumType: "Album",
+			Tracks: []common.Track{
+				{ID: 3, Title: "Track 3", ForeignRecordingID: "rec-3"},
+			},
+		},
+	}
+
+	result := SelectAlbumsToMonitor(albums, false, nil)
+
+	if len(result.ToMonitor) != 1 {
+		t.Fatalf("expected 1 to monitor (downloaded album excluded), got %d", len(result.ToMonitor))
+	}
+	if result.ToMonitor[0].ID != 2 {
+		t.Error("expected only the new album to be selected")
+	}
+}
+
+func TestSelectAlbumsToMonitor_ExcludeDownloadedEP(t *testing.T) {
+	albums := []common.Album{
+		{
+			ID: 1, Title: "Downloaded EP", AlbumType: "EP", HasFiles: true,
+			Tracks: []common.Track{
+				{ID: 1, Title: "Track 1", ForeignRecordingID: "rec-1"},
+			},
+		},
+	}
+
+	result := SelectAlbumsToMonitor(albums, false, nil)
+
+	if len(result.ToMonitor) != 0 {
+		t.Fatalf("expected 0 to monitor (downloaded EP excluded), got %d", len(result.ToMonitor))
+	}
+}
+
+func TestSelectAlbumsToMonitor_ExcludeDownloadedSingle(t *testing.T) {
+	albums := []common.Album{
+		{
+			ID: 1, Title: "Downloaded Single", AlbumType: "Single", HasFiles: true,
+			Tracks: []common.Track{
+				{ID: 1, Title: "Track 1", ForeignRecordingID: "rec-1"},
+			},
+		},
+	}
+
+	result := SelectAlbumsToMonitor(albums, false, nil)
+
+	if len(result.ToMonitor) != 0 {
+		t.Fatalf("expected 0 to monitor (downloaded single excluded), got %d", len(result.ToMonitor))
+	}
+}
+
+func TestSelectAlbumsToMonitor_DownloadedAlbumTracksStillDedup(t *testing.T) {
+	albums := []common.Album{
+		{
+			ID: 1, Title: "Downloaded Album", AlbumType: "Album", HasFiles: true,
+			Tracks: []common.Track{
+				{ID: 1, Title: "Track 1", ForeignRecordingID: "rec-1"},
+				{ID: 2, Title: "Track 2", ForeignRecordingID: "rec-2"},
+			},
+		},
+		{
+			ID: 2, Title: "Redundant EP", AlbumType: "EP",
+			Tracks: []common.Track{
+				{ID: 3, Title: "Track 1", ForeignRecordingID: "rec-1"},
+			},
+		},
+	}
+
+	result := SelectAlbumsToMonitor(albums, false, nil)
+
+	// Downloaded album excluded from monitoring, but its tracks should still
+	// cause the EP to be skipped (tracks already covered).
+	if len(result.ToMonitor) != 0 {
+		t.Fatalf("expected 0 to monitor, got %d", len(result.ToMonitor))
+	}
+	if len(result.Skipped) != 1 {
+		t.Fatalf("expected 1 skipped (EP covered by downloaded album), got %d", len(result.Skipped))
+	}
+}
+

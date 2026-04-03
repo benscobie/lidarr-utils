@@ -57,7 +57,7 @@ func SelectAlbumsToMonitor(albums []common.Album, officialOnly bool, excludeSeco
 				fmt.Sprintf("Album '%s' has no track data — monitoring anyway", album.Title))
 		}
 		addTracksToSelected(album.Tracks, selectedTracks)
-		if !album.Monitored {
+		if !album.Monitored && !album.HasFiles {
 			result.ToMonitor = append(result.ToMonitor, album)
 		}
 	}
@@ -67,7 +67,7 @@ func SelectAlbumsToMonitor(albums []common.Album, officialOnly bool, excludeSeco
 		if len(ep.Tracks) == 0 {
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("EP '%s' has no track data — monitoring anyway", ep.Title))
-			if !ep.Monitored {
+			if !ep.Monitored && !ep.HasFiles {
 				result.ToMonitor = append(result.ToMonitor, ep)
 			}
 			continue
@@ -77,7 +77,7 @@ func SelectAlbumsToMonitor(albums []common.Album, officialOnly bool, excludeSeco
 			result.Skipped = append(result.Skipped, SkippedAlbum{Album: ep, Reason: reason})
 		} else {
 			addTracksToSelected(ep.Tracks, selectedTracks)
-			if !ep.Monitored {
+			if !ep.Monitored && !ep.HasFiles {
 				result.ToMonitor = append(result.ToMonitor, ep)
 			}
 		}
@@ -88,7 +88,7 @@ func SelectAlbumsToMonitor(albums []common.Album, officialOnly bool, excludeSeco
 		if len(single.Tracks) == 0 {
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("Single '%s' has no track data — monitoring anyway", single.Title))
-			if !single.Monitored {
+			if !single.Monitored && !single.HasFiles {
 				result.ToMonitor = append(result.ToMonitor, single)
 			}
 			continue
@@ -98,7 +98,7 @@ func SelectAlbumsToMonitor(albums []common.Album, officialOnly bool, excludeSeco
 			result.Skipped = append(result.Skipped, SkippedAlbum{Album: single, Reason: reason})
 		} else {
 			addTracksToSelected(single.Tracks, selectedTracks)
-			if !single.Monitored {
+			if !single.Monitored && !single.HasFiles {
 				result.ToMonitor = append(result.ToMonitor, single)
 			}
 		}
