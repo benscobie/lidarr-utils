@@ -13,7 +13,7 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o lidarr-deduper .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o lidarr-utils .
 
 # Final stage
 FROM alpine:latest@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
@@ -28,7 +28,7 @@ RUN addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup
 
 # Copy the binary from builder stage
-COPY --from=builder /app/lidarr-deduper .
+COPY --from=builder /app/lidarr-utils .
 
 # Copy example config
 COPY --from=builder /app/config.example.yaml ./config.example.yaml
@@ -45,8 +45,8 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD ./lidarr-deduper --help || exit 1
+  CMD ./lidarr-utils --help || exit 1
 
 # Default command
-ENTRYPOINT ["./lidarr-deduper"]
+ENTRYPOINT ["./lidarr-utils"]
 CMD ["--help"]
