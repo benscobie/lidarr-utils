@@ -43,11 +43,6 @@ func (q *SearchQueue) ProcessSearches(albumChan <-chan common.Album) int {
 			continue
 		}
 
-		if err := q.waitForSlot(); err != nil {
-			log.Printf("  ERROR: Failed to check queue for %s: %v", album.Title, err)
-			continue
-		}
-
 		if err := q.client.SearchAlbum([]int{album.ID}); err != nil {
 			log.Printf("  ERROR: Failed to search for %s: %v", album.Title, err)
 			continue
@@ -56,7 +51,10 @@ func (q *SearchQueue) ProcessSearches(albumChan <-chan common.Album) int {
 		log.Printf("  Queued search: %s", album.Title)
 		searched++
 
-		time.Sleep(time.Duration(q.config.DelaySeconds) * time.Second)
+		if err := q.waitForSlot(); err != nil {
+			log.Printf("  ERROR: Failed to check queue, pausing before next search: %v", err)
+			time.Sleep(time.Duration(q.config.DelaySeconds) * time.Second)
+		}
 	}
 
 	return searched
@@ -80,7 +78,7 @@ func (q *SearchQueue) waitForSlot() error {
 		}
 
 		log.Printf("  Queue full (%d/%d active searches), waiting...", active, q.config.MaxInQueue)
-		time.Sleep(3 * time.Second)
+		time.Sleep(time.Duration(q.config.DelaySeconds) * time.Second)
 	}
 }
 
