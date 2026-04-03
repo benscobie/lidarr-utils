@@ -8,7 +8,7 @@ lidarr:
 
 # Application settings
 app:
-  dry_run: true                   # Set to false to actually make changes
+  dry_run: false                  # Set to true for a dry run (preview only)
   log_level: "info"               # Log level: debug, info, warn, error
   log_file: "lidarr-utils.log"   # Path to log file (optional)
 

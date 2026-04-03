@@ -78,7 +78,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	viper.BindEnv("schedule.run_once", "LIDARR_UTILS_SCHEDULE_RUN_ONCE")
 
 	// Set defaults
-	viper.SetDefault("app.dry_run", true)
+	viper.SetDefault("app.dry_run", false)
 	viper.SetDefault("app.log_level", "info")
 	viper.SetDefault("app.log_file", "lidarr-utils.log")
 	viper.SetDefault("dedupe.add_import_exclusion", false)

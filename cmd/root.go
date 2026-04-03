@@ -33,7 +33,7 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "config file path")
-	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", true, "perform a dry run without making changes")
+	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "perform a dry run without making changes")
 	rootCmd.PersistentFlags().StringVar(&logFile, "log-file", "", "path to log file (default: lidarr-utils.log)")
 }
 
