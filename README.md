@@ -1,38 +1,54 @@
-# Lidarr Deduper
+# lidarr-utils
 
-A Go application that automatically detects and removes duplicate singles from your Lidarr music library. The tool identifies singles that are already included in downloaded albums or EPs by the same artist and removes them to clean up your library.
+A collection of Go-based utilities for managing your Lidarr music library. Currently provides two commands:
+
+- **dedupe** -- detect and remove duplicate singles that already exist in albums or EPs
+- **monitor** -- intelligently monitor and trigger searches for an artist's catalogue
 
 ## Features
 
-- **Duplicate Detection**: Identifies singles that are duplicated in albums/EPs using multiple matching methods:
+### dedupe
+
+- Identifies singles duplicated in albums/EPs using multiple matching methods:
   - MusicBrainz Recording IDs (most reliable)
   - MusicBrainz Track IDs
   - Normalized title matching (fallback)
-- **Import Exclusion Option**: Optionally add removed singles to Lidarr's import exclusion list to prevent future re-imports
-- **Dry Run Support**: Preview what would be deleted before making changes
-- **Scheduled Execution**: Run once or on a cron schedule
-- **Configuration Options**: Support for both config files and environment variables
-- **Docker Support**: Includes Dockerfile and docker-compose for easy deployment
-- **Progress Tracking**: Real-time logging of processing status
+- Optionally adds removed singles to Lidarr's import exclusion list
+- Supports one-time and cron-scheduled execution
+
+### monitor
+
+- Selects which albums to monitor for an artist, preferring albums over EPs over singles
+- Skips releases whose tracks are fully covered by higher-priority releases
+- Filters by secondary album types (e.g. exclude Live, Compilation)
+- Rate-limited search submission via Lidarr's command queue
+- Process a single artist or all artists at once
+
+### Common
+
+- Dry run mode (enabled by default)
+- Config file and environment variable support
+- Structured logging to stdout and optional log file
+- Docker support with Dockerfile and docker-compose
 
 ## Installation
 
 ### Binary Release
 
-Download the latest release from the [GitHub releases page](https://github.com/benscobie/lidarr-deduper/releases).
+Download the latest release from the releases page.
 
 ### From Source
 
 ```bash
-git clone https://github.com/benscobie/lidarr-deduper.git
-cd lidarr-deduper
-go build -o lidarr-deduper .
+git clone https://github.com/benscobie/lidarr-utils.git
+cd lidarr-utils
+go build -o lidarr-utils .
 ```
 
 ### Docker
 
 ```bash
-docker build -t lidarr-deduper .
+docker build -t lidarr-utils .
 # or
 docker-compose up
 ```
@@ -46,139 +62,166 @@ Create a `config.yaml` file (or copy from `config.example.yaml`):
 ```yaml
 # Lidarr connection settings
 lidarr:
-  url: "http://lidarr.home.arpa"
+  url: "http://localhost:8686"
   api_key: "your-api-key-here"
 
 # Application settings
 app:
-  dry_run: true                   # Set to false to actually process duplicates
-  add_import_exclusion: false     # Set to true to add removed singles to import exclusion list
+  dry_run: true
   log_level: "info"
+  log_file: "lidarr-utils.log"
 
-# Scheduling settings
+# Dedupe command settings
+dedupe:
+  add_import_exclusion: false
+
+# Monitor command settings
+monitor:
+  official_only: false
+  exclude_secondary_types: []
+  queue:
+    max_in_queue: 2
+    delay_seconds: 5
+
+# Scheduling settings (dedupe only)
 schedule:
-  enabled: false                  # Enable scheduled runs
-  cron: "0 2 * * *"              # Run daily at 2 AM
-  run_once: true                  # Run once and exit
+  enabled: false
+  cron: "0 2 * * *"
+  run_once: true
 ```
 
 ### Environment Variables
 
-All configuration options can be set via environment variables:
+All configuration options can be set via environment variables with the `LIDARR_UTILS_` prefix:
 
 ```bash
-export LIDARR_DEDUPE_LIDARR_URL="http://lidarr.home.arpa"
-export LIDARR_DEDUPE_LIDARR_API_KEY="your-api-key-here"
-export LIDARR_DEDUPE_APP_DRY_RUN="true"
-export LIDARR_DEDUPE_APP_ADD_IMPORT_EXCLUSION="false"
-export LIDARR_DEDUPE_SCHEDULE_ENABLED="false"
-export LIDARR_DEDUPE_SCHEDULE_CRON="0 2 * * *"
+# Lidarr connection
+export LIDARR_UTILS_LIDARR_URL="http://localhost:8686"
+export LIDARR_UTILS_LIDARR_API_KEY="your-api-key-here"
+
+# App settings
+export LIDARR_UTILS_APP_DRY_RUN="true"
+export LIDARR_UTILS_APP_LOG_LEVEL="info"
+export LIDARR_UTILS_APP_LOG_FILE="lidarr-utils.log"
+
+# Dedupe settings
+export LIDARR_UTILS_DEDUPE_ADD_IMPORT_EXCLUSION="false"
+
+# Monitor settings
+export LIDARR_UTILS_MONITOR_OFFICIAL_ONLY="false"
+export LIDARR_UTILS_MONITOR_EXCLUDE_SECONDARY_TYPES=""
+export LIDARR_UTILS_MONITOR_QUEUE_MAX_IN_QUEUE="2"
+export LIDARR_UTILS_MONITOR_QUEUE_DELAY_SECONDS="5"
+
+# Schedule settings
+export LIDARR_UTILS_SCHEDULE_ENABLED="false"
+export LIDARR_UTILS_SCHEDULE_CRON="0 2 * * *"
+export LIDARR_UTILS_SCHEDULE_RUN_ONCE="true"
 ```
 
 ## Usage
 
-### Command Line Options
+### dedupe
 
 ```bash
-# Run with dry-run (preview only)
-./lidarr-deduper --dry-run=true
+# Preview duplicate detection (dry run, the default)
+./lidarr-utils dedupe
 
-# Actually process duplicates (unmonitor and delete files)
-./lidarr-deduper --dry-run=false
+# Remove duplicate singles
+./lidarr-utils dedupe --dry-run=false
 
-# Also add removed singles to import exclusion list
-./lidarr-deduper --dry-run=false --add-import-exclusion=true
+# Also add removed singles to the import exclusion list
+./lidarr-utils dedupe --dry-run=false --add-import-exclusion=true
 
-# Run on a schedule
-./lidarr-deduper --cron="0 2 * * *"
+# Run on a cron schedule
+./lidarr-utils dedupe --cron="0 2 * * *"
 
-# Use custom config file
-./lidarr-deduper --config=/path/to/config.yaml
+# Use a custom config file
+./lidarr-utils dedupe --config=/path/to/config.yaml
+```
+
+### monitor
+
+```bash
+# Monitor and search a single artist (dry run)
+./lidarr-utils monitor --artist-id=123
+
+# Monitor and search all artists (dry run)
+./lidarr-utils monitor --all
+
+# Actually trigger searches
+./lidarr-utils monitor --all --dry-run=false
+
+# Only process official albums (no secondary types)
+./lidarr-utils monitor --all --official-only
+
+# Exclude specific secondary types
+./lidarr-utils monitor --all --exclude-secondary-types=Live,Compilation
+
+# Control queue behaviour
+./lidarr-utils monitor --all --max-in-queue=3 --delay-seconds=10
 ```
 
 ### Docker
 
+#### dedupe -- one-time dry run:
 
-#### One-time run (dry-run):
 ```bash
 docker run --rm \
-  -e LIDARR_DEDUPE_LIDARR_URL="http://your-lidarr:8686" \
-  -e LIDARR_DEDUPE_LIDARR_API_KEY="your-api-key" \
-  -e LIDARR_DEDUPE_APP_DRY_RUN="true" \
-  lidarr-deduper
+  -e LIDARR_UTILS_LIDARR_URL="http://your-lidarr:8686" \
+  -e LIDARR_UTILS_LIDARR_API_KEY="your-api-key" \
+  -e LIDARR_UTILS_APP_DRY_RUN="true" \
+  lidarr-utils dedupe
 ```
 
-#### Actually process duplicates (unmonitor and delete files):
+#### dedupe -- remove duplicates:
+
 ```bash
 docker run --rm \
-  -e LIDARR_DEDUPE_LIDARR_URL="http://your-lidarr:8686" \
-  -e LIDARR_DEDUPE_LIDARR_API_KEY="your-api-key" \
-  -e LIDARR_DEDUPE_APP_DRY_RUN="false" \
-  lidarr-deduper
+  -e LIDARR_UTILS_LIDARR_URL="http://your-lidarr:8686" \
+  -e LIDARR_UTILS_LIDARR_API_KEY="your-api-key" \
+  -e LIDARR_UTILS_APP_DRY_RUN="false" \
+  lidarr-utils dedupe
 ```
 
-#### Also add removed singles to import exclusion list:
+#### monitor -- process all artists:
+
 ```bash
 docker run --rm \
-  -e LIDARR_DEDUPE_LIDARR_URL="http://your-lidarr:8686" \
-  -e LIDARR_DEDUPE_LIDARR_API_KEY="your-api-key" \
-  -e LIDARR_DEDUPE_APP_DRY_RUN="false" \
-  -e LIDARR_DEDUPE_APP_ADD_IMPORT_EXCLUSION="true" \
-  lidarr-deduper
+  -e LIDARR_UTILS_LIDARR_URL="http://your-lidarr:8686" \
+  -e LIDARR_UTILS_LIDARR_API_KEY="your-api-key" \
+  -e LIDARR_UTILS_APP_DRY_RUN="false" \
+  lidarr-utils monitor --all
 ```
 
 #### Docker Compose:
+
 ```bash
 # Edit docker-compose.yml with your settings
 docker-compose up -d
 ```
 
-## How It Works
+## How dedupe Works
 
-1. **Artist Processing**: Scans all artists in your Lidarr library
-2. **Album Filtering**: Identifies albums with downloaded files
-3. **Single Detection**: Determines which albums are singles based on:
-   - Album type metadata
-   - Track count (1-2 tracks)
-   - Exclusion of EPs and full albums
-4. **Duplicate Matching**: Compares single tracks against tracks in albums/EPs using:
-   - MusicBrainz Recording IDs (preferred)
-   - MusicBrainz Track IDs
-   - Normalized title matching
-5. **Cleanup**: Removes duplicate singles and optionally adds to exclusion list
+1. **Artist Processing** -- scans all artists in your Lidarr library
+2. **Album Filtering** -- identifies albums with downloaded files
+3. **Single Detection** -- determines which albums are singles based on album type metadata, track count (1-2 tracks), and exclusion of EPs and full albums
+4. **Duplicate Matching** -- compares single tracks against tracks in albums/EPs using MusicBrainz Recording IDs (preferred), MusicBrainz Track IDs, and normalized title matching
+5. **Cleanup** -- unmonitors duplicate singles, deletes their files, and optionally adds them to the import exclusion list
 
-## Deletion Behavior
+## How monitor Works
 
-- **Default**: Unmonitors the duplicate single and deletes its files, but keeps the record in Lidarr
-- **Import Exclusion Option**: If `--add-import-exclusion` is set, also adds the single to Lidarr's import exclusion list to prevent future re-imports
+1. **Album Selection** -- retrieves all albums for each artist and groups them by priority: Album > EP > Single
+2. **Track Coverage** -- builds a set of MusicBrainz Recording IDs already covered by higher-priority releases. Lower-priority releases whose tracks are fully covered are skipped.
+3. **Filtering** -- applies secondary type filters (`--official-only`, `--exclude-secondary-types`) to remove unwanted release types
+4. **Monitor & Search** -- monitors selected albums and submits album searches to Lidarr's command queue, respecting the configured rate limits (`max_in_queue`, `delay_seconds`)
 
 ## Safety Features
 
-- **Dry Run Default**: Always defaults to dry-run mode to prevent accidental deletions
-- **READ-ONLY Test Mode**: Includes test mode against your actual Lidarr instance
-- **Detailed Logging**: Shows exactly what will be deleted and why
-- **Progressive Processing**: Adds delays between API calls to avoid overwhelming Lidarr
-
-## Example Output
-
-```
-=== DUPLICATE DETECTION SUMMARY ===
-Found 3 duplicate singles
-
-1. Single: 'Bohemian Rhapsody' by Queen
-   Reason: Track 'Bohemian Rhapsody' found in album 'A Night at the Opera'
-   Found in 1 other album(s):
-     - Album: 'A Night at the Opera'
-  Action: [DRY RUN] Would unmonitor and delete files
-
-2. Single: 'Imagine' by John Lennon
-  Reason: Track 'Imagine' found in album 'Imagine'
-  Found in 1 other album(s):
-    - Album: 'Imagine'
-  Action: [DRY RUN] Would unmonitor and delete files and add to exclusion list
-
-This was a dry run. To actually process duplicates, run with --dry-run=false
-```
+- **Dry Run Default** -- always defaults to dry-run mode to prevent accidental changes
+- **Detailed Logging** -- shows exactly what will be changed and why
+- **Progressive Processing** -- adds delays between API calls to avoid overwhelming Lidarr
+- **Queue Limits** -- monitor respects Lidarr's command queue to prevent overloading
 
 ## Requirements
 
@@ -186,24 +229,10 @@ This was a dry run. To actually process duplicates, run with --dry-run=false
 - Access to Lidarr API
 - Lidarr v1.0+
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Disclaimer
 
-This tool modifies your Lidarr library by unmonitoring and deleting files for duplicate singles. Always run with `--dry-run=true` first to preview changes. The authors are not responsible for any data loss. Use at your own risk and ensure you have backups of your music library.
-
-## Support
-
-- Create an issue on GitHub for bug reports or feature requests
-- Check existing issues before creating new ones
-- Provide logs and configuration details when reporting issues
+This tool modifies your Lidarr library. The dedupe command unmonitors and deletes files for duplicate singles. The monitor command changes album monitoring state and triggers searches. Always run with `--dry-run=true` first to preview changes. The authors are not responsible for any data loss. Use at your own risk and ensure you have backups of your music library.
