@@ -1,0 +1,95 @@
+package monitor
+
+import (
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/lidarr-utils/internal/common"
+	"github.com/lidarr-utils/internal/lidarr"
+)
+
+type QueueConfig struct {
+	MaxInQueue   int
+	DelaySeconds int
+}
+
+type commandInfo struct {
+	Name   string
+	Status string
+}
+
+type SearchQueue struct {
+	client *lidarr.Client
+	config QueueConfig
+	dryRun bool
+}
+
+func NewSearchQueue(client *lidarr.Client, config QueueConfig, dryRun bool) *SearchQueue {
+	return &SearchQueue{
+		client: client,
+		config: config,
+		dryRun: dryRun,
+	}
+}
+
+func (q *SearchQueue) ProcessSearches(albumChan <-chan common.Album) int {
+	searched := 0
+
+	for album := range albumChan {
+		if q.dryRun {
+			log.Printf("  [DRY RUN] Would search for: %s", album.Title)
+			searched++
+			continue
+		}
+
+		if err := q.waitForSlot(); err != nil {
+			log.Printf("  ERROR: Failed to check queue for %s: %v", album.Title, err)
+			continue
+		}
+
+		if err := q.client.SearchAlbum([]int{album.ID}); err != nil {
+			log.Printf("  ERROR: Failed to search for %s: %v", album.Title, err)
+			continue
+		}
+
+		log.Printf("  Queued search: %s", album.Title)
+		searched++
+
+		time.Sleep(time.Duration(q.config.DelaySeconds) * time.Second)
+	}
+
+	return searched
+}
+
+func (q *SearchQueue) waitForSlot() error {
+	for {
+		commands, err := q.client.GetCommands()
+		if err != nil {
+			return fmt.Errorf("failed to get commands: %w", err)
+		}
+
+		var infos []commandInfo
+		for _, cmd := range commands {
+			infos = append(infos, commandInfo{Name: cmd.Name, Status: cmd.Status})
+		}
+
+		active := countActiveSearches(infos)
+		if active < q.config.MaxInQueue {
+			return nil
+		}
+
+		log.Printf("  Queue full (%d/%d active searches), waiting...", active, q.config.MaxInQueue)
+		time.Sleep(3 * time.Second)
+	}
+}
+
+func countActiveSearches(commands []commandInfo) int {
+	count := 0
+	for _, cmd := range commands {
+		if cmd.Name == "AlbumSearch" && (cmd.Status == "started" || cmd.Status == "queued") {
+			count++
+		}
+	}
+	return count
+}
