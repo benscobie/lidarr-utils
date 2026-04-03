@@ -26,7 +26,7 @@ A collection of Go-based utilities for managing your Lidarr music library. Curre
 
 ### Common
 
-- Dry run mode (enabled by default)
+- Dry run mode
 - Config file and environment variable support
 - Structured logging to stdout and optional log file
 - Docker support with Dockerfile and docker-compose
@@ -218,14 +218,14 @@ docker-compose up -d
 
 ## Safety Features
 
-- **Dry Run Default** -- always defaults to dry-run mode to prevent accidental changes
+- **Dry Run Mode** -- use `--dry-run` to preview changes before applying them
 - **Detailed Logging** -- shows exactly what will be changed and why
 - **Progressive Processing** -- adds delays between API calls to avoid overwhelming Lidarr
 - **Queue Limits** -- monitor respects Lidarr's command queue to prevent overloading
 
 ## Requirements
 
-- Go 1.24+ (if building from source)
+- Go 1.25+ (if building from source)
 - Access to Lidarr API
 - Lidarr v1.0+
 

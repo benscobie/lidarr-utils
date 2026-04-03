@@ -61,6 +61,7 @@ func (q *SearchQueue) ProcessSearches(albumChan <-chan common.Album) int {
 }
 
 func (q *SearchQueue) waitForSlot() error {
+	waiting := false
 	for {
 		commands, err := q.client.GetCommands()
 		if err != nil {
@@ -74,10 +75,16 @@ func (q *SearchQueue) waitForSlot() error {
 
 		active := countActiveSearches(infos)
 		if active < q.config.MaxInQueue {
+			if waiting {
+				log.Printf("  Search slot available (%d/%d active searches)", active, q.config.MaxInQueue)
+			}
 			return nil
 		}
 
-		log.Printf("  Queue full (%d/%d active searches), waiting...", active, q.config.MaxInQueue)
+		if !waiting {
+			log.Printf("  Waiting for search slot (%d/%d active searches)...", active, q.config.MaxInQueue)
+			waiting = true
+		}
 		time.Sleep(time.Duration(q.config.DelaySeconds) * time.Second)
 	}
 }
