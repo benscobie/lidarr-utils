@@ -36,6 +36,7 @@ type Album struct {
 	ProfileID      int              `json:"profileId"`
 	Duration       int              `json:"duration"`
 	AlbumType      string           `json:"albumType"`
+	SecondaryTypes []string         `json:"secondaryTypes"`
 	ReleaseDate    string           `json:"releaseDate"`
 	Statistics     *AlbumStatistics `json:"statistics,omitempty"`
 	Artist         *Artist          `json:"artist,omitempty"`
@@ -82,6 +83,13 @@ type TrackFile struct {
 		AudioFormat  string `json:"audioFormat"`
 		AudioBitrate int    `json:"audioBitrate"`
 	} `json:"mediaInfo"`
+}
+
+type Command struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	StartedOn string `json:"startedOn,omitempty"`
 }
 
 func NewClient(baseURL, apiKey string) *Client {
@@ -292,6 +300,86 @@ func (c *Client) deleteTrackFile(trackFileID int) error {
 	}
 
 	return nil
+}
+
+func (c *Client) GetCommands() ([]Command, error) {
+	resp, err := c.makeRequest("GET", "/api/v1/command", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+	}
+
+	var commands []Command
+	if err := json.NewDecoder(resp.Body).Decode(&commands); err != nil {
+		return nil, err
+	}
+
+	return commands, nil
+}
+
+func (c *Client) SearchAlbum(albumIDs []int) error {
+	commandData := map[string]interface{}{
+		"name":     "AlbumSearch",
+		"albumIds": albumIDs,
+	}
+
+	jsonData, err := json.Marshal(commandData)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.makeRequest("POST", "/api/v1/command", strings.NewReader(string(jsonData)))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to trigger album search: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+func (c *Client) MonitorAlbum(albumID int) error {
+	album, err := c.getAlbum(albumID)
+	if err != nil {
+		return fmt.Errorf("failed to get album: %w", err)
+	}
+
+	album.Monitored = true
+
+	if err := c.updateAlbum(album); err != nil {
+		return fmt.Errorf("failed to monitor album: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) GetArtist(artistID int) (*Artist, error) {
+	endpoint := fmt.Sprintf("/api/v1/artist/%d", artistID)
+
+	resp, err := c.makeRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+	}
+
+	var artist Artist
+	if err := json.NewDecoder(resp.Body).Decode(&artist); err != nil {
+		return nil, err
+	}
+
+	return &artist, nil
 }
 
 func (c *Client) TestConnection() error {
