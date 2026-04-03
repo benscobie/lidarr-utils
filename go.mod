@@ -1,4 +1,4 @@
-module github.com/lidarr-deduper
+module github.com/lidarr-utils
 
 go 1.26.1
 

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lidarr-deduper/internal/lidarr"
+	"github.com/lidarr-utils/internal/lidarr"
 )
 
 type Deduper struct {

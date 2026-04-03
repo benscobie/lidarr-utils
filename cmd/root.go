@@ -13,9 +13,9 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 
-	"github.com/lidarr-deduper/internal/config"
-	"github.com/lidarr-deduper/internal/dedupe"
-	"github.com/lidarr-deduper/internal/lidarr"
+	"github.com/lidarr-utils/internal/config"
+	"github.com/lidarr-utils/internal/dedupe"
+	"github.com/lidarr-utils/internal/lidarr"
 )
 
 var (
