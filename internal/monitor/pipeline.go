@@ -80,7 +80,6 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 				stats.SinglesMonitored++
 			}
 			log.Printf("  Monitor: %s (%s)", album.Title, album.AlbumType)
-			albumChan <- album
 		}
 
 		for _, skipped := range result.Skipped {
@@ -101,6 +100,10 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 
 		for _, warning := range result.Warnings {
 			log.Printf("  WARNING: %s", warning)
+		}
+
+		for _, album := range result.ToMonitor {
+			albumChan <- album
 		}
 
 		time.Sleep(100 * time.Millisecond)
