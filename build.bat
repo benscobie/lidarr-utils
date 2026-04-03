@@ -3,7 +3,7 @@ REM Build script for Windows
 
 setlocal EnableDelayedExpansion
 
-set APP_NAME=lidarr-deduper
+set APP_NAME=lidarr-utils
 set VERSION=%1
 if "%VERSION%"=="" set VERSION=dev
 set BUILD_DIR=build

@@ -4,7 +4,7 @@
 
 set -e
 
-APP_NAME="lidarr-deduper"
+APP_NAME="lidarr-utils"
 VERSION=${1:-"dev"}
 BUILD_DIR="build"
 
