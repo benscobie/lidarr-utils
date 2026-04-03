@@ -1,40 +1,34 @@
 version: '3.8'
 
 services:
-  lidarr-deduper:
+  lidarr-utils:
     build: .
-    container_name: lidarr-deduper
+    container_name: lidarr-utils
     restart: unless-stopped
     volumes:
       - ./config:/app/config  # Mount config directory
     environment:
       # Lidarr connection (can also be set in config.yaml)
-      - LIDARR_DEDUPE_LIDARR_URL=http://lidarr:8686
-      - LIDARR_DEDUPE_LIDARR_API_KEY=your-api-key-here
-      
+      - LIDARR_UTILS_LIDARR_URL=http://lidarr:8686
+      - LIDARR_UTILS_LIDARR_API_KEY=your-api-key-here
+
       # App settings
-      - LIDARR_DEDUPE_APP_DRY_RUN=true
-      - LIDARR_DEDUPE_APP_DELETE_MODE=delete
-      - LIDARR_DEDUPE_APP_LOG_LEVEL=info
-      
+      - LIDARR_UTILS_APP_DRY_RUN=true
+      - LIDARR_UTILS_APP_LOG_LEVEL=info
+
       # Schedule settings (for scheduled runs)
-      - LIDARR_DEDUPE_SCHEDULE_ENABLED=false
-      - LIDARR_DEDUPE_SCHEDULE_CRON=0 2 * * *
-      - LIDARR_DEDUPE_SCHEDULE_RUN_ONCE=true
-      
+      - LIDARR_UTILS_SCHEDULE_ENABLED=false
+      - LIDARR_UTILS_SCHEDULE_CRON=0 2 * * *
+      - LIDARR_UTILS_SCHEDULE_RUN_ONCE=true
+
       # Timezone
       - TZ=America/New_York
-    
-    command: 
-      - "--config=/app/config/config.yaml"
-      - "--dry-run=true"
-    
+
+    command: ["dedupe", "--config=/app/config/config.yaml", "--dry-run=true"]
+
     # Uncomment to run on a schedule instead of once
-    # command: 
-    #   - "--config=/app/config/config.yaml"
-    #   - "--cron=0 2 * * *"  # Daily at 2 AM
-    #   - "--dry-run=false"
-    
+    # command: ["dedupe", "--config=/app/config/config.yaml", "--cron=0 2 * * *", "--dry-run=false"]
+
     networks:
       - lidarr-network
 
