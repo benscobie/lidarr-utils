@@ -1,4 +1,4 @@
-# Example configuration file for Lidarr Deduper
+# Example configuration file for lidarr-utils
 # Copy this file to config.yaml and adjust the settings for your environment
 
 # Lidarr connection settings
@@ -8,12 +8,23 @@ lidarr:
 
 # Application settings
 app:
-  dry_run: true                   # Set to false to actually process duplicates
-  add_import_exclusion: false     # Set to true to add removed singles to import exclusion list
+  dry_run: true                   # Set to false to actually make changes
   log_level: "info"               # Log level: debug, info, warn, error
-  log_file: "lidarr-deduper.log" # Path to log file (optional)
+  log_file: "lidarr-utils.log"   # Path to log file (optional)
 
-# Scheduling settings
+# Dedupe command settings
+dedupe:
+  add_import_exclusion: false     # Add removed singles to import exclusion list
+
+# Monitor command settings
+monitor:
+  official_only: false                # Only process albums with no secondary types
+  exclude_secondary_types: []         # Secondary types to exclude (e.g. ["Live", "Compilation"])
+  queue:
+    max_in_queue: 2                   # Max concurrent searches in Lidarr queue
+    delay_seconds: 5                  # Delay (seconds) after each search submission
+
+# Scheduling settings (dedupe only)
 schedule:
   enabled: false                  # Enable scheduled runs
   cron: "0 2 * * *"              # Run daily at 2 AM (when enabled)
