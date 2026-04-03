@@ -118,7 +118,11 @@ func LoadConfig(configPath string) (*Config, error) {
 func (c *Config) Print() {
 	fmt.Printf("Configuration:\n")
 	fmt.Printf("  Lidarr URL: %s\n", c.Lidarr.URL)
-	fmt.Printf("  API Key: %s***\n", c.Lidarr.APIKey[:8]) // Show only first 8 characters
+	if len(c.Lidarr.APIKey) >= 8 {
+		fmt.Printf("  API Key: %s***\n", c.Lidarr.APIKey[:8])
+	} else {
+		fmt.Printf("  API Key: ***\n")
+	}
 	fmt.Printf("  Dry Run: %v\n", c.App.DryRun)
 	fmt.Printf("  Log Level: %s\n", c.App.LogLevel)
 	fmt.Printf("  Log File: %s\n", c.App.LogFile)

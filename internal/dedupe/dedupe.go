@@ -275,7 +275,7 @@ func (d *Deduper) PrintSummary(duplicates []DuplicateResult) {
 		fmt.Printf("   Reason: %s\n", duplicate.Reason)
 		fmt.Printf("   Found in %d other album(s):\n", len(duplicate.FoundInAlbums))
 		for _, album := range duplicate.FoundInAlbums {
-			fmt.Printf("     - %s: '%s'\n", strings.Title(album.AlbumType), album.Title)
+			fmt.Printf("     - %s: '%s'\n", album.AlbumType, album.Title)
 		}
 
 		if d.dryRun {

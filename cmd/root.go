@@ -15,8 +15,6 @@ import (
 var (
 	configFile string
 	dryRun     bool
-	runOnce    bool
-	cronExpr   string
 	logFile    string
 )
 
@@ -36,8 +34,6 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "config file path")
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", true, "perform a dry run without making changes")
-	rootCmd.PersistentFlags().BoolVar(&runOnce, "run-once", true, "run once and exit (overrides schedule config)")
-	rootCmd.PersistentFlags().StringVar(&cronExpr, "cron", "", "cron expression for scheduled runs (overrides config)")
 	rootCmd.PersistentFlags().StringVar(&logFile, "log-file", "", "path to log file (default: lidarr-utils.log)")
 }
 
@@ -55,14 +51,6 @@ func getConfig(cmd *cobra.Command) (*config.Config, error) {
 		cfg.App.LogFile = logFile
 	} else if cfg.App.LogFile == "" {
 		cfg.App.LogFile = "lidarr-utils.log"
-	}
-	if cmd.Flags().Changed("run-once") {
-		cfg.Schedule.RunOnce = runOnce
-	}
-	if cmd.Flags().Changed("cron") {
-		cfg.Schedule.Cron = cronExpr
-		cfg.Schedule.Enabled = true
-		cfg.Schedule.RunOnce = false
 	}
 
 	return cfg, nil

@@ -15,7 +15,11 @@ import (
 	"github.com/lidarr-utils/internal/lidarr"
 )
 
-var addImportExclusion bool
+var (
+	addImportExclusion bool
+	runOnce            bool
+	cronExpr           string
+)
 
 var dedupeCmd = &cobra.Command{
 	Use:   "dedupe",
@@ -29,6 +33,8 @@ The command supports both one-time runs and scheduled execution via cron express
 
 func init() {
 	dedupeCmd.Flags().BoolVar(&addImportExclusion, "add-import-exclusion", false, "add removed singles to import exclusion list")
+	dedupeCmd.Flags().BoolVar(&runOnce, "run-once", true, "run once and exit (overrides schedule config)")
+	dedupeCmd.Flags().StringVar(&cronExpr, "cron", "", "cron expression for scheduled runs (overrides config)")
 	rootCmd.AddCommand(dedupeCmd)
 }
 
@@ -38,9 +44,16 @@ func runDedupe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Override add-import-exclusion from flag
 	if cmd.Flags().Changed("add-import-exclusion") {
 		cfg.Dedupe.AddImportExclusion = addImportExclusion
+	}
+	if cmd.Flags().Changed("run-once") {
+		cfg.Schedule.RunOnce = runOnce
+	}
+	if cmd.Flags().Changed("cron") {
+		cfg.Schedule.Cron = cronExpr
+		cfg.Schedule.Enabled = true
+		cfg.Schedule.RunOnce = false
 	}
 
 	// Setup logging to file
