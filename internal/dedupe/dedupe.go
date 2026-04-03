@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lidarr-utils/internal/common"
 	"github.com/lidarr-utils/internal/lidarr"
 )
 
@@ -16,28 +17,9 @@ type Deduper struct {
 }
 
 type DuplicateResult struct {
-	SingleAlbum   Album
-	FoundInAlbums []Album
+	SingleAlbum   common.Album
+	FoundInAlbums []common.Album
 	Reason        string
-}
-
-type Album struct {
-	ID         int
-	Title      string
-	AlbumType  string
-	ArtistID   int
-	ArtistName string
-	Tracks     []Track
-	HasFiles   bool
-}
-
-type Track struct {
-	ID                 int
-	Title              string
-	ForeignTrackID     string
-	ForeignRecordingID string
-	TrackNumber        string // Changed to string to match API
-	HasFile            bool
 }
 
 func NewDeduper(client *lidarr.Client, dryRun bool, addImportExclusion bool) *Deduper {
@@ -86,7 +68,7 @@ func (d *Deduper) findDuplicatesForArtist(artistID int, artistName string) ([]Du
 	}
 
 	// Convert to our internal format and filter for downloaded albums
-	var processedAlbums []Album
+	var processedAlbums []common.Album
 	for _, album := range albums {
 		tracks, err := d.client.GetTracksByAlbum(album.ID)
 		if err != nil {
@@ -95,10 +77,10 @@ func (d *Deduper) findDuplicatesForArtist(artistID int, artistName string) ([]Du
 		}
 
 		// Convert tracks
-		var processedTracks []Track
+		var processedTracks []common.Track
 		hasFiles := false
 		for _, track := range tracks {
-			processedTracks = append(processedTracks, Track{
+			processedTracks = append(processedTracks, common.Track{
 				ID:                 track.ID,
 				Title:              track.Title,
 				ForeignTrackID:     track.ForeignTrackID,
@@ -113,14 +95,16 @@ func (d *Deduper) findDuplicatesForArtist(artistID int, artistName string) ([]Du
 
 		// Only include albums with downloaded files
 		if hasFiles {
-			processedAlbums = append(processedAlbums, Album{
-				ID:         album.ID,
-				Title:      album.Title,
-				AlbumType:  album.AlbumType,
-				ArtistID:   album.ArtistID,
-				ArtistName: artistName,
-				Tracks:     processedTracks,
-				HasFiles:   hasFiles,
+			processedAlbums = append(processedAlbums, common.Album{
+				ID:             album.ID,
+				Title:          album.Title,
+				AlbumType:      album.AlbumType,
+				SecondaryTypes: nil,
+				ArtistID:       album.ArtistID,
+				ArtistName:     artistName,
+				Tracks:         processedTracks,
+				HasFiles:       hasFiles,
+				Monitored:      false,
 			})
 		}
 	}
@@ -131,7 +115,7 @@ func (d *Deduper) findDuplicatesForArtist(artistID int, artistName string) ([]Du
 	var duplicates []DuplicateResult
 
 	for _, album := range processedAlbums {
-		if d.isSingle(album) {
+		if common.IsSingle(album) {
 			foundIn, reason := d.findSingleInOtherAlbums(album, processedAlbums)
 			if len(foundIn) > 0 {
 				duplicates = append(duplicates, DuplicateResult{
@@ -146,31 +130,9 @@ func (d *Deduper) findDuplicatesForArtist(artistID int, artistName string) ([]Du
 	return duplicates, nil
 }
 
-func (d *Deduper) isSingle(album Album) bool {
-	// Consider it a single if:
-	// 1. AlbumType is "Single"
-	// 2. Has only 1-2 tracks (allowing for B-side or alternate version)
-	// 3. Not explicitly an EP or Album
-
-	albumType := strings.ToLower(album.AlbumType)
-	trackCount := len(album.Tracks)
-
-	// Explicit single type
-	if albumType == "single" {
-		return true
-	}
-
-	// Small track count that's not explicitly an EP or Album
-	if trackCount <= 2 && albumType != "ep" && albumType != "album" {
-		return true
-	}
-
-	return false
-}
-
-func (d *Deduper) findSingleInOtherAlbums(single Album, allAlbums []Album) ([]Album, string) {
+func (d *Deduper) findSingleInOtherAlbums(single common.Album, allAlbums []common.Album) ([]common.Album, string) {
 	// Get all downloadable tracks from the single
-	var singleTracks []Track
+	var singleTracks []common.Track
 	for _, track := range single.Tracks {
 		if track.HasFile {
 			singleTracks = append(singleTracks, track)
@@ -182,8 +144,8 @@ func (d *Deduper) findSingleInOtherAlbums(single Album, allAlbums []Album) ([]Al
 	}
 
 	// Track which single tracks have been found and where
-	trackMatches := make(map[int][]Album)  // track index -> albums where found
-	trackReasons := make(map[int][]string) // track index -> reasons
+	trackMatches := make(map[int][]common.Album)  // track index -> albums where found
+	trackReasons := make(map[int][]string)         // track index -> reasons
 
 	// Check each album to see which single tracks it contains
 	for _, album := range allAlbums {
@@ -193,7 +155,7 @@ func (d *Deduper) findSingleInOtherAlbums(single Album, allAlbums []Album) ([]Al
 		}
 
 		// Skip other singles
-		if d.isSingle(album) {
+		if common.IsSingle(album) {
 			continue
 		}
 
@@ -204,7 +166,7 @@ func (d *Deduper) findSingleInOtherAlbums(single Album, allAlbums []Album) ([]Al
 					continue
 				}
 
-				if d.areTracksTheSame(singleTrack, albumTrack) {
+				if common.AreTracksTheSame(singleTrack, albumTrack) {
 					// Add this album to the matches for this track
 					trackMatches[singleTrackIdx] = append(trackMatches[singleTrackIdx], album)
 					trackReasons[singleTrackIdx] = append(trackReasons[singleTrackIdx],
@@ -223,7 +185,7 @@ func (d *Deduper) findSingleInOtherAlbums(single Album, allAlbums []Album) ([]Al
 	}
 
 	// All tracks found - collect unique albums and build reason string
-	albumSet := make(map[int]Album)
+	albumSet := make(map[int]common.Album)
 	var allReasons []string
 
 	for trackIdx := range singleTracks {
@@ -238,7 +200,7 @@ func (d *Deduper) findSingleInOtherAlbums(single Album, allAlbums []Album) ([]Al
 	}
 
 	// Convert set to slice
-	var foundIn []Album
+	var foundIn []common.Album
 	for _, album := range albumSet {
 		foundIn = append(foundIn, album)
 	}
@@ -249,43 +211,6 @@ func (d *Deduper) findSingleInOtherAlbums(single Album, allAlbums []Album) ([]Al
 	}
 
 	return foundIn, reason
-}
-
-func (d *Deduper) areTracksTheSame(track1, track2 Track) bool {
-	// Method 1: Compare by MusicBrainz recording IDs (most reliable)
-	if track1.ForeignRecordingID != "" && track2.ForeignRecordingID != "" {
-		return track1.ForeignRecordingID == track2.ForeignRecordingID
-	}
-
-	// Method 2: Compare by MusicBrainz track IDs
-	if track1.ForeignTrackID != "" && track2.ForeignTrackID != "" {
-		return track1.ForeignTrackID == track2.ForeignTrackID
-	}
-
-	// Method 3: Compare by normalized titles (fallback)
-	return d.normalizeTrackTitle(track1.Title) == d.normalizeTrackTitle(track2.Title)
-}
-
-func (d *Deduper) normalizeTrackTitle(title string) string {
-	// Remove common variations and normalize for comparison
-	title = strings.ToLower(title)
-	title = strings.TrimSpace(title)
-
-	// Remove common suffixes that might indicate different versions
-	suffixes := []string{
-		" (remaster)", " (remastered)", " - remaster", " - remastered",
-		" (radio edit)", " - radio edit",
-		" (single version)", " - single version",
-		" (album version)", " - album version",
-		" (explicit)", " - explicit",
-		" (clean)", " - clean",
-	}
-
-	for _, suffix := range suffixes {
-		title = strings.TrimSuffix(title, suffix)
-	}
-
-	return title
 }
 
 func (d *Deduper) ProcessDuplicates(duplicates []DuplicateResult) error {
