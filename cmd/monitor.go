@@ -145,3 +145,53 @@ func resolveArtistID(client *lidarr.Client, idStr string) (int, error) {
 
 	return 0, fmt.Errorf("artist with foreign ID %q not found in Lidarr", idStr)
 }
+
+// artistResolver is the subset of lidarr.Client needed for ID resolution.
+type artistResolver interface {
+	GetArtists() ([]lidarr.Artist, error)
+}
+
+func resolveArtistIDs(resolver artistResolver, idStrs []string) ([]int, error) {
+	var numericIDs []int
+	var foreignIDs []string
+
+	for _, s := range idStrs {
+		if id, err := strconv.Atoi(s); err == nil {
+			numericIDs = append(numericIDs, id)
+		} else {
+			foreignIDs = append(foreignIDs, s)
+		}
+	}
+
+	if len(foreignIDs) == 0 {
+		return numericIDs, nil
+	}
+
+	// Fetch artists once for all foreign ID lookups
+	log.Printf("Resolving %d foreign artist ID(s)...", len(foreignIDs))
+	artists, err := resolver.GetArtists()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get artists: %w", err)
+	}
+
+	foreignToLidarr := make(map[string]int, len(artists))
+	foreignToName := make(map[string]string, len(artists))
+	for _, a := range artists {
+		foreignToLidarr[a.ForeignID] = a.ID
+		foreignToName[a.ForeignID] = a.ArtistName
+	}
+
+	var resolvedIDs []int
+	resolvedIDs = append(resolvedIDs, numericIDs...)
+
+	for _, fid := range foreignIDs {
+		id, ok := foreignToLidarr[fid]
+		if !ok {
+			return nil, fmt.Errorf("artist with foreign ID %q not found in Lidarr", fid)
+		}
+		log.Printf("Resolved foreign ID %s to: %s (ID: %d)", fid, foreignToName[fid], id)
+		resolvedIDs = append(resolvedIDs, id)
+	}
+
+	return resolvedIDs, nil
+}
