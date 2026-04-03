@@ -24,10 +24,10 @@ services:
       # Timezone
       - TZ=America/New_York
 
-    command: ["dedupe", "--config=/app/config/config.yaml", "--dry-run=true"]
+    command: ["dedupe", "--config=/app/config/config.yaml"]
 
     # Uncomment to run on a schedule instead of once
-    # command: ["dedupe", "--config=/app/config/config.yaml", "--cron=0 2 * * *", "--dry-run=false"]
+    # command: ["dedupe", "--config=/app/config/config.yaml", "--cron=0 2 * * *"]
 
     networks:
       - lidarr-network

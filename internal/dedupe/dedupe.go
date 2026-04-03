@@ -294,6 +294,6 @@ func (d *Deduper) PrintSummary(duplicates []DuplicateResult) {
 	}
 
 	if d.dryRun {
-		fmt.Printf("This was a dry run. To actually process duplicates, run with --dry-run=false\n")
+		fmt.Printf("This was a dry run. To run for real, remove the --dry-run flag.\n")
 	}
 }

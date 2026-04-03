@@ -67,7 +67,7 @@ lidarr:
 
 # Application settings
 app:
-  dry_run: true
+  dry_run: false
   log_level: "info"
   log_file: "lidarr-utils.log"
 
@@ -124,14 +124,14 @@ export LIDARR_UTILS_SCHEDULE_RUN_ONCE="true"
 ### dedupe
 
 ```bash
-# Preview duplicate detection (dry run, the default)
-./lidarr-utils dedupe
+# Preview duplicate detection (dry run)
+./lidarr-utils dedupe --dry-run
 
 # Remove duplicate singles
-./lidarr-utils dedupe --dry-run=false
+./lidarr-utils dedupe
 
 # Also add removed singles to the import exclusion list
-./lidarr-utils dedupe --dry-run=false --add-import-exclusion=true
+./lidarr-utils dedupe --add-import-exclusion
 
 # Run on a cron schedule
 ./lidarr-utils dedupe --cron="0 2 * * *"
@@ -143,14 +143,14 @@ export LIDARR_UTILS_SCHEDULE_RUN_ONCE="true"
 ### monitor
 
 ```bash
-# Monitor and search a single artist (dry run)
-./lidarr-utils monitor --artist-id=123
+# Preview what would be monitored (dry run)
+./lidarr-utils monitor --artist-id 123 --dry-run
 
-# Monitor and search all artists (dry run)
+# Monitor and search a single artist
+./lidarr-utils monitor --artist-id 123
+
+# Monitor and search all artists
 ./lidarr-utils monitor --all
-
-# Actually trigger searches
-./lidarr-utils monitor --all --dry-run=false
 
 # Only process official albums (no secondary types)
 ./lidarr-utils monitor --all --official-only
@@ -235,4 +235,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Disclaimer
 
-This tool modifies your Lidarr library. The dedupe command unmonitors and deletes files for duplicate singles. The monitor command changes album monitoring state and triggers searches. Always run with `--dry-run=true` first to preview changes. The authors are not responsible for any data loss. Use at your own risk and ensure you have backups of your music library.
+This tool modifies your Lidarr library. The dedupe command unmonitors and deletes files for duplicate singles. The monitor command changes album monitoring state and triggers searches. Use `--dry-run` first to preview changes. The authors are not responsible for any data loss. Use at your own risk and ensure you have backups of your music library.

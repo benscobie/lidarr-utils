@@ -185,6 +185,6 @@ func (m *Monitor) PrintSummary(stats *Stats, duration time.Duration) {
 	fmt.Println()
 
 	if m.dryRun {
-		fmt.Println("This was a dry run. To actually monitor and search, run with --dry-run=false")
+		fmt.Println("This was a dry run. To run for real, remove the --dry-run flag.")
 	}
 }
