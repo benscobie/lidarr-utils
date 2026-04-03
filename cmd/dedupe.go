@@ -40,7 +40,7 @@ func runDedupe(cmd *cobra.Command, args []string) error {
 
 	// Override add-import-exclusion from flag
 	if cmd.Flags().Changed("add-import-exclusion") {
-		cfg.App.AddImportExclusion = addImportExclusion
+		cfg.Dedupe.AddImportExclusion = addImportExclusion
 	}
 
 	// Setup logging to file
@@ -67,7 +67,7 @@ func runDedupe(cmd *cobra.Command, args []string) error {
 	log.Println("Successfully connected to Lidarr")
 
 	// Create deduper
-	deduper := dedupe.NewDeduper(client, cfg.App.DryRun, cfg.App.AddImportExclusion)
+	deduper := dedupe.NewDeduper(client, cfg.App.DryRun, cfg.Dedupe.AddImportExclusion)
 
 	// Determine execution mode
 	if cfg.Schedule.RunOnce || !cfg.Schedule.Enabled {
