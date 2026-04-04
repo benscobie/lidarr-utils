@@ -296,40 +296,20 @@ func (c *Client) SearchAlbum(albumIDs []int) error {
 }
 
 func (c *Client) setAlbumMonitored(albumID int, monitored bool) error {
-	payload := struct {
-		AlbumIDs  []int `json:"albumIds"`
-		Monitored bool  `json:"monitored"`
-	}{
-		AlbumIDs:  []int{albumID},
-		Monitored: monitored,
-	}
-
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal monitor request: %w", err)
-	}
-
-	resp, err := c.makeRequest("PUT", "/api/v1/album/monitor", strings.NewReader(string(jsonData)))
-	if err != nil {
-		return fmt.Errorf("failed to update album monitored state: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to update album monitored state: status %d, body: %s", resp.StatusCode, string(body))
-	}
-
-	return nil
+	return c.setAlbumsMonitoredState([]int{albumID}, monitored)
 }
 
 func (c *Client) MonitorAlbums(albumIDs []int) error {
+	return c.setAlbumsMonitoredState(albumIDs, true)
+}
+
+func (c *Client) setAlbumsMonitoredState(albumIDs []int, monitored bool) error {
 	payload := struct {
 		AlbumIDs  []int `json:"albumIds"`
 		Monitored bool  `json:"monitored"`
 	}{
 		AlbumIDs:  albumIDs,
-		Monitored: true,
+		Monitored: monitored,
 	}
 
 	jsonData, err := json.Marshal(payload)
