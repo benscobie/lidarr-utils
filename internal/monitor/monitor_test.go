@@ -285,3 +285,100 @@ func TestSelectAlbumsToMonitor_DownloadedAlbumTracksStillDedup(t *testing.T) {
 	}
 }
 
+func TestSelectAlbumsToMonitor_ExcludeVinylOnly(t *testing.T) {
+	albums := []common.Album{
+		{
+			ID: 1, Title: "Vinyl Only Album", AlbumType: "Album",
+			Releases: []common.Release{
+				{ID: 1, Format: "Vinyl"},
+				{ID: 2, Format: "12\" Vinyl"},
+			},
+			Tracks: []common.Track{
+				{ID: 1, Title: "Track 1", ForeignRecordingID: "rec-1"},
+			},
+		},
+		{
+			ID: 2, Title: "CD Album", AlbumType: "Album",
+			Releases: []common.Release{
+				{ID: 3, Format: "CD"},
+				{ID: 4, Format: "Digital Media"},
+			},
+			Tracks: []common.Track{
+				{ID: 2, Title: "Track 2", ForeignRecordingID: "rec-2"},
+			},
+		},
+	}
+
+	result := SelectAlbumsToMonitor(albums, false, nil, []string{"Vinyl"})
+
+	if len(result.ToMonitor) != 1 {
+		t.Fatalf("expected 1 to monitor, got %d", len(result.ToMonitor))
+	}
+	if result.ToMonitor[0].ID != 2 {
+		t.Error("expected CD Album to be selected")
+	}
+	if len(result.Excluded) != 1 {
+		t.Fatalf("expected 1 excluded, got %d", len(result.Excluded))
+	}
+	if result.Excluded[0].ID != 1 {
+		t.Error("expected Vinyl Only Album to be excluded")
+	}
+}
+
+func TestSelectAlbumsToMonitor_VinylAndCDReleasePasses(t *testing.T) {
+	albums := []common.Album{
+		{
+			ID: 1, Title: "Has CD Release Too", AlbumType: "Album",
+			Releases: []common.Release{
+				{ID: 1, Format: "Vinyl"},
+				{ID: 2, Format: "CD"},
+			},
+			Tracks: []common.Track{
+				{ID: 1, Title: "Track 1", ForeignRecordingID: "rec-1"},
+			},
+		},
+	}
+
+	result := SelectAlbumsToMonitor(albums, false, nil, []string{"Vinyl"})
+
+	if len(result.ToMonitor) != 1 {
+		t.Fatalf("expected 1 to monitor (has CD release), got %d", len(result.ToMonitor))
+	}
+	if len(result.Excluded) != 0 {
+		t.Fatalf("expected 0 excluded, got %d", len(result.Excluded))
+	}
+}
+
+func TestSelectAlbumsToMonitor_FormatFilterBeforeTrackCoverage(t *testing.T) {
+	// Vinyl-only album should be excluded even if it has unique tracks
+	albums := []common.Album{
+		{
+			ID: 1, Title: "CD Album", AlbumType: "Album",
+			Releases: []common.Release{{ID: 1, Format: "CD"}},
+			Tracks: []common.Track{
+				{ID: 1, Title: "Track 1", ForeignRecordingID: "rec-1"},
+			},
+		},
+		{
+			ID: 2, Title: "Vinyl Only EP", AlbumType: "EP",
+			Releases: []common.Release{{ID: 2, Format: "Vinyl"}},
+			Tracks: []common.Track{
+				{ID: 2, Title: "Unique Vinyl Track", ForeignRecordingID: "rec-unique"},
+			},
+		},
+	}
+
+	result := SelectAlbumsToMonitor(albums, false, nil, []string{"Vinyl"})
+
+	if len(result.ToMonitor) != 1 {
+		t.Fatalf("expected 1 to monitor, got %d", len(result.ToMonitor))
+	}
+	if len(result.Excluded) != 1 {
+		t.Fatalf("expected 1 excluded, got %d", len(result.Excluded))
+	}
+	// The EP should be excluded by format, NOT appear in Skipped
+	if len(result.Skipped) != 0 {
+		t.Fatalf("expected 0 skipped (format filter runs before coverage), got %d", len(result.Skipped))
+	}
+}
+
