@@ -145,3 +145,100 @@ func TestShouldExcludeBySecondaryType_EmptyExcludeList(t *testing.T) {
 		t.Error("expected empty exclude list to not exclude anything")
 	}
 }
+
+func TestShouldExcludeByFormat_EmptyExcludeList(t *testing.T) {
+	album := Album{
+		Releases: []Release{{Format: "Vinyl"}},
+	}
+	if ShouldExcludeByFormat(album, nil) {
+		t.Error("expected empty exclude list to not exclude anything")
+	}
+}
+
+func TestShouldExcludeByFormat_NoReleases(t *testing.T) {
+	album := Album{Releases: nil}
+	if ShouldExcludeByFormat(album, []string{"Vinyl"}) {
+		t.Error("expected album with no releases to not be excluded")
+	}
+}
+
+func TestShouldExcludeByFormat_AllReleasesExcluded(t *testing.T) {
+	album := Album{
+		Releases: []Release{
+			{Format: "Vinyl"},
+			{Format: "12\" Vinyl"},
+		},
+	}
+	if !ShouldExcludeByFormat(album, []string{"Vinyl"}) {
+		t.Error("expected album with only vinyl releases to be excluded")
+	}
+}
+
+func TestShouldExcludeByFormat_OneAcceptableRelease(t *testing.T) {
+	album := Album{
+		Releases: []Release{
+			{Format: "Vinyl"},
+			{Format: "CD"},
+		},
+	}
+	if ShouldExcludeByFormat(album, []string{"Vinyl"}) {
+		t.Error("expected album with a CD release to not be excluded")
+	}
+}
+
+func TestShouldExcludeByFormat_QuantityPrefix(t *testing.T) {
+	album := Album{
+		Releases: []Release{
+			{Format: "2xVinyl"},
+		},
+	}
+	if !ShouldExcludeByFormat(album, []string{"Vinyl"}) {
+		t.Error("expected 2xVinyl to match Vinyl in exclude list")
+	}
+}
+
+func TestShouldExcludeByFormat_CombinedFormatPartialMatch(t *testing.T) {
+	// "2xVinyl, CD" — one component is Vinyl (excluded), one is CD (not excluded)
+	album := Album{
+		Releases: []Release{
+			{Format: "2xVinyl, CD"},
+		},
+	}
+	if ShouldExcludeByFormat(album, []string{"Vinyl"}) {
+		t.Error("expected combined format with CD to not be excluded")
+	}
+}
+
+func TestShouldExcludeByFormat_CombinedFormatAllExcluded(t *testing.T) {
+	// "2xVinyl, Cassette" — both components excluded
+	album := Album{
+		Releases: []Release{
+			{Format: "2xVinyl, Cassette"},
+		},
+	}
+	if !ShouldExcludeByFormat(album, []string{"Vinyl", "Cassette"}) {
+		t.Error("expected combined format with all excluded components to be excluded")
+	}
+}
+
+func TestShouldExcludeByFormat_CaseInsensitive(t *testing.T) {
+	album := Album{
+		Releases: []Release{
+			{Format: "vinyl"},
+		},
+	}
+	if !ShouldExcludeByFormat(album, []string{"Vinyl"}) {
+		t.Error("expected case-insensitive matching")
+	}
+}
+
+func TestShouldExcludeByFormat_EmptyFormat(t *testing.T) {
+	album := Album{
+		Releases: []Release{
+			{Format: ""},
+		},
+	}
+	if ShouldExcludeByFormat(album, []string{"Vinyl"}) {
+		t.Error("expected release with empty format to not be excluded")
+	}
+}
