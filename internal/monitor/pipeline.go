@@ -16,7 +16,6 @@ type Monitor struct {
 	officialOnly          bool
 	excludeSecondaryTypes []string
 	excludeFormats        []string
-	queue                 *SearchQueue
 }
 
 type Stats struct {
@@ -31,30 +30,21 @@ type Stats struct {
 	Warnings         int
 }
 
-func NewMonitor(client *lidarr.Client, dryRun bool, officialOnly bool, excludeSecondaryTypes []string, excludeFormats []string, queueCfg QueueConfig) *Monitor {
+func NewMonitor(client *lidarr.Client, dryRun bool, officialOnly bool, excludeSecondaryTypes []string, excludeFormats []string) *Monitor {
 	return &Monitor{
 		client:                client,
 		dryRun:                dryRun,
 		officialOnly:          officialOnly,
 		excludeSecondaryTypes: excludeSecondaryTypes,
 		excludeFormats:        excludeFormats,
-		queue:                 NewSearchQueue(client, queueCfg, dryRun),
 	}
 }
 
 func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 	stats := &Stats{}
 
-	albumChan := make(chan common.Album, 10)
+	var allAlbums []common.Album
 
-	// Stage 2: Search consumer
-	searchDone := make(chan int, 1)
-	go func() {
-		searched := m.queue.ProcessAlbums(albumChan)
-		searchDone <- searched
-	}()
-
-	// Stage 1: Selection producer
 	for i, artistID := range artistIDs {
 		artist, err := m.client.GetArtist(artistID)
 		if err != nil {
@@ -114,14 +104,36 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 			log.Printf("  WARNING: %s", warning)
 		}
 
-		for _, album := range result.ToMonitor {
-			albumChan <- album
-		}
+		allAlbums = append(allAlbums, result.ToMonitor...)
 	}
 
-	close(albumChan)
-	stats.SearchesSubmitted = <-searchDone
+	if len(allAlbums) == 0 {
+		log.Println("No albums to monitor or search")
+		return stats, nil
+	}
 
+	if m.dryRun {
+		log.Printf("[DRY RUN] Would monitor and search %d albums", len(allAlbums))
+		stats.SearchesSubmitted = len(allAlbums)
+		return stats, nil
+	}
+
+	albumIDs := make([]int, len(allAlbums))
+	for i, album := range allAlbums {
+		albumIDs[i] = album.ID
+	}
+
+	if err := m.client.MonitorAlbums(albumIDs); err != nil {
+		return stats, fmt.Errorf("failed to monitor albums: %w", err)
+	}
+	log.Printf("Monitored %d albums", len(albumIDs))
+
+	if err := m.client.SearchAlbum(albumIDs); err != nil {
+		return stats, fmt.Errorf("failed to search albums: %w", err)
+	}
+	log.Printf("Submitted search for %d albums", len(albumIDs))
+
+	stats.SearchesSubmitted = len(albumIDs)
 	return stats, nil
 }
 
