@@ -18,8 +18,6 @@ var (
 	officialOnly          bool
 	excludeSecondaryTypes []string
 	excludeFormats        []string
-	maxInQueue            int
-	delaySeconds          int
 )
 
 var monitorCmd = &cobra.Command{
@@ -27,7 +25,7 @@ var monitorCmd = &cobra.Command{
 	Short: "Intelligently monitor and search an artist's catalogue",
 	Long: `Selects which albums to monitor for an artist, preferring albums over EPs
 over singles. Skips releases whose tracks are fully covered by higher-priority
-releases. Triggers rate-limited searches via Lidarr's command queue.`,
+releases. Monitors and searches selected albums via Lidarr's API.`,
 	RunE: runMonitor,
 }
 
@@ -37,8 +35,6 @@ func init() {
 	monitorCmd.Flags().BoolVar(&officialOnly, "official-only", false, "only process albums with no secondary types")
 	monitorCmd.Flags().StringSliceVar(&excludeSecondaryTypes, "exclude-secondary-types", nil, "secondary types to exclude (comma-separated)")
 	monitorCmd.Flags().StringSliceVar(&excludeFormats, "exclude-formats", nil, "release formats to exclude (comma-separated, e.g. Vinyl,Cassette)")
-	monitorCmd.Flags().IntVar(&maxInQueue, "max-in-queue", 2, "max concurrent searches in Lidarr queue")
-	monitorCmd.Flags().IntVar(&delaySeconds, "delay-seconds", 5, "delay after each search submission")
 	rootCmd.AddCommand(monitorCmd)
 }
 
@@ -61,12 +57,6 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("exclude-formats") {
 		cfg.Monitor.ExcludeFormats = excludeFormats
 	}
-	if cmd.Flags().Changed("max-in-queue") {
-		cfg.Monitor.Queue.MaxInQueue = maxInQueue
-	}
-	if cmd.Flags().Changed("delay-seconds") {
-		cfg.Monitor.Queue.DelaySeconds = delaySeconds
-	}
 
 	logFileHandle, err := setupLoggingFromConfig(cfg)
 	if err != nil {
@@ -87,18 +77,12 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 	}
 	log.Println("Successfully connected to Lidarr")
 
-	queueCfg := monitor.QueueConfig{
-		MaxInQueue:   cfg.Monitor.Queue.MaxInQueue,
-		DelaySeconds: cfg.Monitor.Queue.DelaySeconds,
-	}
-
 	mon := monitor.NewMonitor(
 		client,
 		cfg.App.DryRun,
 		cfg.Monitor.OfficialOnly,
 		cfg.Monitor.ExcludeSecondaryTypes,
 		cfg.Monitor.ExcludeFormats,
-		queueCfg,
 	)
 
 	var artistIDs []int
