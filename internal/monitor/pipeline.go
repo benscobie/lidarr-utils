@@ -19,9 +19,9 @@ type Monitor struct {
 
 type Stats struct {
 	ArtistsProcessed int
-	AlbumsMonitored  int
-	EPsMonitored     int
-	SinglesMonitored int
+	AlbumsSelected  int
+	EPsSelected     int
+	SinglesSelected int
 	EPsSkipped       int
 	SinglesSkipped   int
 	Excluded         int
@@ -73,11 +73,11 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 		for _, album := range result.ToMonitor {
 			switch {
 			case common.IsAlbum(album):
-				stats.AlbumsMonitored++
+				stats.AlbumsSelected++
 			case common.IsEP(album):
-				stats.EPsMonitored++
+				stats.EPsSelected++
 			default:
-				stats.SinglesMonitored++
+				stats.SinglesSelected++
 			}
 			log.Printf("  Selected: %s (%s)", album.Title, album.AlbumType)
 		}
@@ -162,9 +162,9 @@ func (m *Monitor) PrintSummary(stats *Stats, duration time.Duration) {
 	fmt.Printf("\n=== MONITOR SUMMARY ===\n")
 	fmt.Printf("Completed in %v\n", duration)
 	fmt.Printf("Artists processed: %d\n", stats.ArtistsProcessed)
-	fmt.Printf("Albums monitored: %d\n", stats.AlbumsMonitored)
-	fmt.Printf("EPs monitored: %d\n", stats.EPsMonitored)
-	fmt.Printf("Singles monitored: %d\n", stats.SinglesMonitored)
+	fmt.Printf("Albums selected: %d\n", stats.AlbumsSelected)
+	fmt.Printf("EPs selected: %d\n", stats.EPsSelected)
+	fmt.Printf("Singles selected: %d\n", stats.SinglesSelected)
 	fmt.Printf("EPs skipped: %d\n", stats.EPsSkipped)
 	fmt.Printf("Singles skipped: %d\n", stats.SinglesSkipped)
 	fmt.Printf("Excluded (secondary type): %d\n", stats.Excluded)
