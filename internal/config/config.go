@@ -33,12 +33,6 @@ type MonitorConfig struct {
 	OfficialOnly          bool        `mapstructure:"official_only"`
 	ExcludeSecondaryTypes []string    `mapstructure:"exclude_secondary_types"`
 	ExcludeFormats        []string    `mapstructure:"exclude_formats"`
-	Queue                 QueueConfig `mapstructure:"queue"`
-}
-
-type QueueConfig struct {
-	MaxInQueue   int `mapstructure:"max_in_queue"`
-	DelaySeconds int `mapstructure:"delay_seconds"`
 }
 
 type ScheduleConfig struct {
@@ -73,8 +67,6 @@ func LoadConfig(configPath string) (*Config, error) {
 	viper.BindEnv("monitor.official_only", "LIDARR_UTILS_MONITOR_OFFICIAL_ONLY")
 	viper.BindEnv("monitor.exclude_secondary_types", "LIDARR_UTILS_MONITOR_EXCLUDE_SECONDARY_TYPES")
 	viper.BindEnv("monitor.exclude_formats", "LIDARR_UTILS_MONITOR_EXCLUDE_FORMATS")
-	viper.BindEnv("monitor.queue.max_in_queue", "LIDARR_UTILS_MONITOR_QUEUE_MAX_IN_QUEUE")
-	viper.BindEnv("monitor.queue.delay_seconds", "LIDARR_UTILS_MONITOR_QUEUE_DELAY_SECONDS")
 	viper.BindEnv("schedule.enabled", "LIDARR_UTILS_SCHEDULE_ENABLED")
 	viper.BindEnv("schedule.cron", "LIDARR_UTILS_SCHEDULE_CRON")
 	viper.BindEnv("schedule.run_once", "LIDARR_UTILS_SCHEDULE_RUN_ONCE")
@@ -87,8 +79,6 @@ func LoadConfig(configPath string) (*Config, error) {
 	viper.SetDefault("monitor.official_only", false)
 	viper.SetDefault("monitor.exclude_secondary_types", []string{})
 	viper.SetDefault("monitor.exclude_formats", []string{})
-	viper.SetDefault("monitor.queue.max_in_queue", 2)
-	viper.SetDefault("monitor.queue.delay_seconds", 5)
 	viper.SetDefault("schedule.enabled", false)
 	viper.SetDefault("schedule.cron", "0 2 * * *") // 2 AM daily
 	viper.SetDefault("schedule.run_once", true)
@@ -135,8 +125,6 @@ func (c *Config) Print() {
 	fmt.Printf("    Official Only: %v\n", c.Monitor.OfficialOnly)
 	fmt.Printf("    Exclude Secondary Types: %v\n", c.Monitor.ExcludeSecondaryTypes)
 	fmt.Printf("    Exclude Formats: %v\n", c.Monitor.ExcludeFormats)
-	fmt.Printf("    Queue Max In Queue: %d\n", c.Monitor.Queue.MaxInQueue)
-	fmt.Printf("    Queue Delay Seconds: %d\n", c.Monitor.Queue.DelaySeconds)
 	fmt.Printf("  Schedule Enabled: %v\n", c.Schedule.Enabled)
 	if c.Schedule.Enabled {
 		fmt.Printf("  Schedule Cron: %s\n", c.Schedule.Cron)
