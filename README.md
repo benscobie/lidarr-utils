@@ -18,8 +18,17 @@ A collection of Go-based utilities for managing your Lidarr music library. Curre
 
 ### monitor
 
-- Selects which albums to monitor for an artist, preferring albums over EPs over singles
-- Skips releases whose tracks are fully covered by higher-priority releases
+- Intelligently selects which releases to monitor, avoiding redundant downloads:
+
+  > **Example:** An artist has a studio album containing tracks A, B, and C. They also
+  > released an EP with tracks A and B, and a single for track C. Since all EP and single
+  > tracks already appear on the album, only the album is monitored — the EP and single are
+  > skipped. If the EP also contained a bonus track D, it would be monitored too, because
+  > that track isn't covered by any higher-priority release.
+  >
+  > Priority order: **Albums > EPs > Singles**. Tracks are matched by MusicBrainz Recording
+  > ID when available, falling back to normalised title comparison.
+
 - Filters by secondary album types (e.g. exclude Live, Compilation)
 - Rate-limited search submission via Lidarr's command queue
 - Process a single artist or all artists at once
