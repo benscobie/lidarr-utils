@@ -30,7 +30,7 @@ A collection of Go-based utilities for managing your Lidarr music library. Curre
   > ID when available, falling back to normalised title comparison.
 
 - Filters by secondary album types (e.g. exclude Live, Compilation)
-- Rate-limited search submission via Lidarr's command queue
+- Batch monitor and search via Lidarr's API
 - Process a single artist or all artists at once
 
 ### Common
@@ -89,9 +89,6 @@ monitor:
   official_only: false
   exclude_secondary_types: []
   exclude_formats: []
-  queue:
-    max_in_queue: 2
-    delay_seconds: 5
 
 # Scheduling settings (dedupe only)
 schedule:
@@ -120,8 +117,6 @@ export LIDARR_UTILS_DEDUPE_ADD_IMPORT_EXCLUSION="false"
 # Monitor settings
 export LIDARR_UTILS_MONITOR_OFFICIAL_ONLY="false"
 export LIDARR_UTILS_MONITOR_EXCLUDE_SECONDARY_TYPES=""
-export LIDARR_UTILS_MONITOR_QUEUE_MAX_IN_QUEUE="2"
-export LIDARR_UTILS_MONITOR_QUEUE_DELAY_SECONDS="5"
 
 # Schedule settings
 export LIDARR_UTILS_SCHEDULE_ENABLED="false"
@@ -167,9 +162,6 @@ export LIDARR_UTILS_SCHEDULE_RUN_ONCE="true"
 
 # Exclude specific secondary types
 ./lidarr-utils monitor --all --exclude-secondary-types=Live,Compilation
-
-# Control queue behaviour
-./lidarr-utils monitor --all --max-in-queue=3 --delay-seconds=10
 ```
 
 ### Docker
@@ -224,14 +216,13 @@ docker-compose up -d
 1. **Album Selection** -- retrieves all albums for each artist and groups them by priority: Album > EP > Single
 2. **Track Coverage** -- builds a set of MusicBrainz Recording IDs already covered by higher-priority releases. Lower-priority releases whose tracks are fully covered are skipped.
 3. **Filtering** -- applies secondary type filters (`--official-only`, `--exclude-secondary-types`) to remove unwanted release types
-4. **Monitor & Search** -- monitors selected albums and submits album searches to Lidarr's command queue, respecting the configured rate limits (`max_in_queue`, `delay_seconds`)
+4. **Monitor & Search** -- batch monitors selected albums and submits a single album search to Lidarr, which processes them sequentially
 
 ## Safety Features
 
 - **Dry Run Mode** -- use `--dry-run` to preview changes before applying them
 - **Detailed Logging** -- shows exactly what will be changed and why
-- **Progressive Processing** -- adds delays between API calls to avoid overwhelming Lidarr
-- **Queue Limits** -- monitor respects Lidarr's command queue to prevent overloading
+- **Batch Operations** -- uses Lidarr's native command queue for search processing
 
 ## Requirements
 
