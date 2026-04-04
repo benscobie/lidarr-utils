@@ -20,6 +20,7 @@ dedupe:
 monitor:
   official_only: false                # Only process albums with no secondary types
   exclude_secondary_types: []         # Secondary types to exclude (e.g. ["Live", "Compilation"])
+  exclude_formats: []                 # Release formats to exclude (e.g. ["Vinyl", "Cassette"])
   queue:
     max_in_queue: 2                   # Max concurrent searches in Lidarr queue
     delay_seconds: 5                  # Delay (seconds) after each search submission

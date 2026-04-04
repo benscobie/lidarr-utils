@@ -32,6 +32,7 @@ type DedupeConfig struct {
 type MonitorConfig struct {
 	OfficialOnly          bool        `mapstructure:"official_only"`
 	ExcludeSecondaryTypes []string    `mapstructure:"exclude_secondary_types"`
+	ExcludeFormats        []string    `mapstructure:"exclude_formats"`
 	Queue                 QueueConfig `mapstructure:"queue"`
 }
 
@@ -71,6 +72,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	viper.BindEnv("dedupe.add_import_exclusion", "LIDARR_UTILS_DEDUPE_ADD_IMPORT_EXCLUSION")
 	viper.BindEnv("monitor.official_only", "LIDARR_UTILS_MONITOR_OFFICIAL_ONLY")
 	viper.BindEnv("monitor.exclude_secondary_types", "LIDARR_UTILS_MONITOR_EXCLUDE_SECONDARY_TYPES")
+	viper.BindEnv("monitor.exclude_formats", "LIDARR_UTILS_MONITOR_EXCLUDE_FORMATS")
 	viper.BindEnv("monitor.queue.max_in_queue", "LIDARR_UTILS_MONITOR_QUEUE_MAX_IN_QUEUE")
 	viper.BindEnv("monitor.queue.delay_seconds", "LIDARR_UTILS_MONITOR_QUEUE_DELAY_SECONDS")
 	viper.BindEnv("schedule.enabled", "LIDARR_UTILS_SCHEDULE_ENABLED")
@@ -84,6 +86,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	viper.SetDefault("dedupe.add_import_exclusion", false)
 	viper.SetDefault("monitor.official_only", false)
 	viper.SetDefault("monitor.exclude_secondary_types", []string{})
+	viper.SetDefault("monitor.exclude_formats", []string{})
 	viper.SetDefault("monitor.queue.max_in_queue", 2)
 	viper.SetDefault("monitor.queue.delay_seconds", 5)
 	viper.SetDefault("schedule.enabled", false)
@@ -131,6 +134,7 @@ func (c *Config) Print() {
 	fmt.Printf("  Monitor:\n")
 	fmt.Printf("    Official Only: %v\n", c.Monitor.OfficialOnly)
 	fmt.Printf("    Exclude Secondary Types: %v\n", c.Monitor.ExcludeSecondaryTypes)
+	fmt.Printf("    Exclude Formats: %v\n", c.Monitor.ExcludeFormats)
 	fmt.Printf("    Queue Max In Queue: %d\n", c.Monitor.Queue.MaxInQueue)
 	fmt.Printf("    Queue Delay Seconds: %d\n", c.Monitor.Queue.DelaySeconds)
 	fmt.Printf("  Schedule Enabled: %v\n", c.Schedule.Enabled)

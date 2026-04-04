@@ -17,6 +17,7 @@ var (
 	allArtists            bool
 	officialOnly          bool
 	excludeSecondaryTypes []string
+	excludeFormats        []string
 	maxInQueue            int
 	delaySeconds          int
 )
@@ -35,6 +36,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&allArtists, "all", false, "process all artists")
 	monitorCmd.Flags().BoolVar(&officialOnly, "official-only", false, "only process albums with no secondary types")
 	monitorCmd.Flags().StringSliceVar(&excludeSecondaryTypes, "exclude-secondary-types", nil, "secondary types to exclude (comma-separated)")
+	monitorCmd.Flags().StringSliceVar(&excludeFormats, "exclude-formats", nil, "release formats to exclude (comma-separated, e.g. Vinyl,Cassette)")
 	monitorCmd.Flags().IntVar(&maxInQueue, "max-in-queue", 2, "max concurrent searches in Lidarr queue")
 	monitorCmd.Flags().IntVar(&delaySeconds, "delay-seconds", 5, "delay after each search submission")
 	rootCmd.AddCommand(monitorCmd)
@@ -55,6 +57,9 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 	}
 	if cmd.Flags().Changed("exclude-secondary-types") {
 		cfg.Monitor.ExcludeSecondaryTypes = excludeSecondaryTypes
+	}
+	if cmd.Flags().Changed("exclude-formats") {
+		cfg.Monitor.ExcludeFormats = excludeFormats
 	}
 	if cmd.Flags().Changed("max-in-queue") {
 		cfg.Monitor.Queue.MaxInQueue = maxInQueue
@@ -92,7 +97,7 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 		cfg.App.DryRun,
 		cfg.Monitor.OfficialOnly,
 		cfg.Monitor.ExcludeSecondaryTypes,
-		nil, // excludeFormats — not yet configurable
+		cfg.Monitor.ExcludeFormats,
 		queueCfg,
 	)
 
