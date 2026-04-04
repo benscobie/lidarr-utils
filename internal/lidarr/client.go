@@ -37,10 +37,17 @@ type Album struct {
 	Duration       int              `json:"duration"`
 	AlbumType      string           `json:"albumType"`
 	SecondaryTypes []string         `json:"secondaryTypes"`
+	Releases       []Release        `json:"releases,omitempty"`
 	ReleaseDate    string           `json:"releaseDate"`
 	Statistics     *AlbumStatistics `json:"statistics,omitempty"`
 	Artist         *Artist          `json:"artist,omitempty"`
 	Tracks         []Track          `json:"tracks,omitempty"`
+}
+
+type Release struct {
+	ID        int    `json:"id"`
+	Format    string `json:"format"`
+	Monitored bool   `json:"monitored"`
 }
 
 type AlbumStatistics struct {

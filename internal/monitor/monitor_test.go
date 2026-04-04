@@ -25,7 +25,7 @@ func TestSelectAlbumsToMonitor_PrefersAlbumsOverEPs(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil)
+	result := SelectAlbumsToMonitor(albums, false, nil, nil)
 
 	if len(result.ToMonitor) != 1 {
 		t.Fatalf("expected 1 album to monitor, got %d", len(result.ToMonitor))
@@ -55,7 +55,7 @@ func TestSelectAlbumsToMonitor_PrefersEPsOverSingles(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil)
+	result := SelectAlbumsToMonitor(albums, false, nil, nil)
 
 	if len(result.ToMonitor) != 1 {
 		t.Fatalf("expected 1 to monitor, got %d", len(result.ToMonitor))
@@ -91,7 +91,7 @@ func TestSelectAlbumsToMonitor_EPWithTracksAcrossMultipleAlbums(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil)
+	result := SelectAlbumsToMonitor(albums, false, nil, nil)
 
 	if len(result.ToMonitor) != 2 {
 		t.Fatalf("expected 2 to monitor (both albums), got %d", len(result.ToMonitor))
@@ -118,7 +118,7 @@ func TestSelectAlbumsToMonitor_EPWithUniqueTracksIsMonitored(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil)
+	result := SelectAlbumsToMonitor(albums, false, nil, nil)
 
 	if len(result.ToMonitor) != 2 {
 		t.Fatalf("expected 2 to monitor (album + EP), got %d", len(result.ToMonitor))
@@ -141,7 +141,7 @@ func TestSelectAlbumsToMonitor_SkipsAlreadyMonitored(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil)
+	result := SelectAlbumsToMonitor(albums, false, nil, nil)
 
 	if len(result.ToMonitor) != 0 {
 		t.Fatalf("expected 0 to monitor (album already monitored), got %d", len(result.ToMonitor))
@@ -164,7 +164,7 @@ func TestSelectAlbumsToMonitor_OfficialOnly(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, true, nil)
+	result := SelectAlbumsToMonitor(albums, true, nil, nil)
 
 	if len(result.ToMonitor) != 1 {
 		t.Fatalf("expected 1 to monitor, got %d", len(result.ToMonitor))
@@ -185,7 +185,7 @@ func TestSelectAlbumsToMonitor_AlbumWithNoTracks(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil)
+	result := SelectAlbumsToMonitor(albums, false, nil, nil)
 
 	if len(result.ToMonitor) != 1 {
 		t.Fatalf("expected 1 to monitor (no tracks = can't prove redundancy), got %d", len(result.ToMonitor))
@@ -212,7 +212,7 @@ func TestSelectAlbumsToMonitor_ExcludeDownloadedAlbum(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil)
+	result := SelectAlbumsToMonitor(albums, false, nil, nil)
 
 	if len(result.ToMonitor) != 1 {
 		t.Fatalf("expected 1 to monitor (downloaded album excluded), got %d", len(result.ToMonitor))
@@ -232,7 +232,7 @@ func TestSelectAlbumsToMonitor_ExcludeDownloadedEP(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil)
+	result := SelectAlbumsToMonitor(albums, false, nil, nil)
 
 	if len(result.ToMonitor) != 0 {
 		t.Fatalf("expected 0 to monitor (downloaded EP excluded), got %d", len(result.ToMonitor))
@@ -249,7 +249,7 @@ func TestSelectAlbumsToMonitor_ExcludeDownloadedSingle(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil)
+	result := SelectAlbumsToMonitor(albums, false, nil, nil)
 
 	if len(result.ToMonitor) != 0 {
 		t.Fatalf("expected 0 to monitor (downloaded single excluded), got %d", len(result.ToMonitor))
@@ -273,7 +273,7 @@ func TestSelectAlbumsToMonitor_DownloadedAlbumTracksStillDedup(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil)
+	result := SelectAlbumsToMonitor(albums, false, nil, nil)
 
 	// Downloaded album excluded from monitoring, but its tracks should still
 	// cause the EP to be skipped (tracks already covered).

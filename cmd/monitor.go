@@ -92,6 +92,7 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 		cfg.App.DryRun,
 		cfg.Monitor.OfficialOnly,
 		cfg.Monitor.ExcludeSecondaryTypes,
+		nil, // excludeFormats — not yet configurable
 		queueCfg,
 	)
 

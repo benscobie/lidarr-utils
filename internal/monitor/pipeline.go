@@ -3,6 +3,7 @@ package monitor
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/lidarr-utils/internal/common"
@@ -14,6 +15,7 @@ type Monitor struct {
 	dryRun                bool
 	officialOnly          bool
 	excludeSecondaryTypes []string
+	excludeFormats        []string
 	queue                 *SearchQueue
 }
 
@@ -29,12 +31,13 @@ type Stats struct {
 	Warnings         int
 }
 
-func NewMonitor(client *lidarr.Client, dryRun bool, officialOnly bool, excludeSecondaryTypes []string, queueCfg QueueConfig) *Monitor {
+func NewMonitor(client *lidarr.Client, dryRun bool, officialOnly bool, excludeSecondaryTypes []string, excludeFormats []string, queueCfg QueueConfig) *Monitor {
 	return &Monitor{
 		client:                client,
 		dryRun:                dryRun,
 		officialOnly:          officialOnly,
 		excludeSecondaryTypes: excludeSecondaryTypes,
+		excludeFormats:        excludeFormats,
 		queue:                 NewSearchQueue(client, queueCfg, dryRun),
 	}
 }
@@ -94,8 +97,17 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 
 		for _, excluded := range result.Excluded {
 			stats.Excluded++
-			log.Printf("  Exclude: %s (%s) — secondary types: %v",
-				excluded.Title, excluded.AlbumType, excluded.SecondaryTypes)
+			if len(excluded.Releases) > 0 && common.ShouldExcludeByFormat(excluded, m.excludeFormats) {
+				formats := make([]string, 0, len(excluded.Releases))
+				for _, r := range excluded.Releases {
+					formats = append(formats, r.Format)
+				}
+				log.Printf("  Skip: %s (%s) — no acceptable format (available: %s)",
+					excluded.Title, excluded.AlbumType, strings.Join(formats, ", "))
+			} else {
+				log.Printf("  Exclude: %s (%s) — secondary types: %v",
+					excluded.Title, excluded.AlbumType, excluded.SecondaryTypes)
+			}
 		}
 
 		for _, warning := range result.Warnings {
@@ -140,6 +152,15 @@ func (m *Monitor) processArtist(artistID int, artistName string) (*SelectionResu
 			})
 		}
 
+		var commonReleases []common.Release
+		for _, r := range la.Releases {
+			commonReleases = append(commonReleases, common.Release{
+				ID:        r.ID,
+				Format:    r.Format,
+				Monitored: r.Monitored,
+			})
+		}
+
 		albums = append(albums, common.Album{
 			ID:             la.ID,
 			Title:          la.Title,
@@ -148,12 +169,13 @@ func (m *Monitor) processArtist(artistID int, artistName string) (*SelectionResu
 			ArtistID:       la.ArtistID,
 			ArtistName:     artistName,
 			Tracks:         commonTracks,
+			Releases:       commonReleases,
 			HasFiles:       la.Statistics != nil && la.Statistics.TrackFileCount > 0,
 			Monitored:      la.Monitored,
 		})
 	}
 
-	result := SelectAlbumsToMonitor(albums, m.officialOnly, m.excludeSecondaryTypes)
+	result := SelectAlbumsToMonitor(albums, m.officialOnly, m.excludeSecondaryTypes, m.excludeFormats)
 
 	return &result, nil
 }
@@ -167,7 +189,7 @@ func (m *Monitor) PrintSummary(stats *Stats, duration time.Duration) {
 	fmt.Printf("Singles selected: %d\n", stats.SinglesSelected)
 	fmt.Printf("EPs skipped: %d\n", stats.EPsSkipped)
 	fmt.Printf("Singles skipped: %d\n", stats.SinglesSkipped)
-	fmt.Printf("Excluded (secondary type): %d\n", stats.Excluded)
+	fmt.Printf("Excluded: %d\n", stats.Excluded)
 	fmt.Printf("Searches completed: %d\n", stats.SearchesComplete)
 	if stats.Warnings > 0 {
 		fmt.Printf("Warnings: %d\n", stats.Warnings)

@@ -19,12 +19,22 @@ type SkippedAlbum struct {
 	Reason string
 }
 
-func SelectAlbumsToMonitor(albums []common.Album, officialOnly bool, excludeSecondaryTypes []string) SelectionResult {
+func SelectAlbumsToMonitor(albums []common.Album, officialOnly bool, excludeSecondaryTypes []string, excludeFormats []string) SelectionResult {
 	var result SelectionResult
 
-	// Filter by secondary types first
-	var filtered []common.Album
+	// Filter by format first
+	var formatFiltered []common.Album
 	for _, album := range albums {
+		if common.ShouldExcludeByFormat(album, excludeFormats) {
+			result.Excluded = append(result.Excluded, album)
+			continue
+		}
+		formatFiltered = append(formatFiltered, album)
+	}
+
+	// Filter by secondary types
+	var filtered []common.Album
+	for _, album := range formatFiltered {
 		if common.ShouldExcludeBySecondaryType(album, officialOnly, excludeSecondaryTypes) {
 			result.Excluded = append(result.Excluded, album)
 			continue
