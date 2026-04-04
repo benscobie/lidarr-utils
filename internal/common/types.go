@@ -1,5 +1,11 @@
 package common
 
+type Release struct {
+	ID        int
+	Format    string
+	Monitored bool
+}
+
 type Album struct {
 	ID             int
 	Title          string
@@ -8,6 +14,7 @@ type Album struct {
 	ArtistID       int
 	ArtistName     string
 	Tracks         []Track
+	Releases       []Release
 	HasFiles       bool
 	Monitored      bool
 }
