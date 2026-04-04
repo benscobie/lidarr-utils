@@ -79,6 +79,7 @@ dedupe:
 monitor:
   official_only: false
   exclude_secondary_types: []
+  exclude_formats: []
   queue:
     max_in_queue: 2
     delay_seconds: 5

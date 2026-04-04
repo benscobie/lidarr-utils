@@ -27,7 +27,7 @@ type Stats struct {
 	EPsSkipped       int
 	SinglesSkipped   int
 	Excluded         int
-	SearchesComplete int
+	SearchesSubmitted int
 	Warnings         int
 }
 
@@ -117,12 +117,10 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 		for _, album := range result.ToMonitor {
 			albumChan <- album
 		}
-
-		time.Sleep(100 * time.Millisecond)
 	}
 
 	close(albumChan)
-	stats.SearchesComplete = <-searchDone
+	stats.SearchesSubmitted = <-searchDone
 
 	return stats, nil
 }
@@ -190,7 +188,7 @@ func (m *Monitor) PrintSummary(stats *Stats, duration time.Duration) {
 	fmt.Printf("EPs skipped: %d\n", stats.EPsSkipped)
 	fmt.Printf("Singles skipped: %d\n", stats.SinglesSkipped)
 	fmt.Printf("Excluded: %d\n", stats.Excluded)
-	fmt.Printf("Searches completed: %d\n", stats.SearchesComplete)
+	fmt.Printf("Searches submitted: %d\n", stats.SearchesSubmitted)
 	if stats.Warnings > 0 {
 		fmt.Printf("Warnings: %d\n", stats.Warnings)
 	}

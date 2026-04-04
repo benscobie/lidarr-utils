@@ -157,3 +157,21 @@ func TestNormalizeTrackTitle_Spaces(t *testing.T) {
 		t.Errorf("NormalizeTrackTitle with surrounding spaces = %q, want %q", result, "song title")
 	}
 }
+
+func TestNormalizeTrackTitle_MultipleSuffixes(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"Song Title (Remastered) (Radio Edit)", "song title"},
+		{"Song Title (Explicit) (Remastered)", "song title"},
+		{"Song Title - Remastered (Single Version)", "song title"},
+	}
+
+	for _, tt := range tests {
+		result := NormalizeTrackTitle(tt.input)
+		if result != tt.expected {
+			t.Errorf("NormalizeTrackTitle(%q) = %q, want %q", tt.input, result, tt.expected)
+		}
+	}
+}

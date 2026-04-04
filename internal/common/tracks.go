@@ -27,8 +27,17 @@ func NormalizeTrackTitle(title string) string {
 		" (clean)", " - clean",
 	}
 
-	for _, suffix := range suffixes {
-		title = strings.TrimSuffix(title, suffix)
+	changed := true
+	for changed {
+		changed = false
+		for _, suffix := range suffixes {
+			before := title
+			title = strings.TrimSuffix(title, suffix)
+			if title != before {
+				title = strings.TrimSpace(title)
+				changed = true
+			}
+		}
 	}
 
 	return title

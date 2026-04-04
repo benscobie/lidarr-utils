@@ -8,8 +8,8 @@
 *.dll
 *.so
 *.dylib
-lidarr-deduper
-lidarr-deduper.exe
+lidarr-utils
+lidarr-utils.exe
 
 # Test binary, built with `go test -c`
 *.test

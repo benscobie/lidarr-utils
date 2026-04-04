@@ -12,6 +12,7 @@ import (
 type QueueConfig struct {
 	MaxInQueue   int
 	DelaySeconds int
+	MaxWaitTime  time.Duration
 }
 
 type commandInfo struct {
@@ -66,7 +67,13 @@ func (q *SearchQueue) ProcessAlbums(albumChan <-chan common.Album) int {
 }
 
 func (q *SearchQueue) waitForSlot() error {
+	maxWait := q.config.MaxWaitTime
+	if maxWait == 0 {
+		maxWait = 10 * time.Minute
+	}
+	deadline := time.Now().Add(maxWait)
 	waiting := false
+
 	for {
 		commands, err := q.client.GetCommands()
 		if err != nil {
@@ -84,6 +91,10 @@ func (q *SearchQueue) waitForSlot() error {
 				log.Printf("  Search slot available (%d/%d active searches)", active, q.config.MaxInQueue)
 			}
 			return nil
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out after %v waiting for search slot (%d/%d active searches)", maxWait, active, q.config.MaxInQueue)
 		}
 
 		if !waiting {

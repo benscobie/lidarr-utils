@@ -40,13 +40,6 @@ RUN mkdir -p /app/config && \
 # Switch to non-root user
 USER appuser
 
-# Expose port (if needed for health checks)
-EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD ./lidarr-utils --help || exit 1
-
 # Default command
 ENTRYPOINT ["./lidarr-utils"]
 CMD ["--help"]
