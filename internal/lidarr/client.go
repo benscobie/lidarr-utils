@@ -185,17 +185,7 @@ func (c *Client) GetTracksByAlbum(albumID int) ([]Track, error) {
 }
 
 func (c *Client) UnmonitorAndDeleteFiles(albumID int) error {
-	// First, get the album to modify it
-	album, err := c.getAlbum(albumID)
-	if err != nil {
-		return fmt.Errorf("failed to get album: %w", err)
-	}
-
-	// Set album to unmonitored
-	album.Monitored = false
-
-	// Update the album
-	if err := c.updateAlbum(album); err != nil {
+	if err := c.setAlbumMonitored(albumID, false); err != nil {
 		return fmt.Errorf("failed to unmonitor album: %w", err)
 	}
 
@@ -270,28 +260,6 @@ func (c *Client) getAlbum(albumID int) (*Album, error) {
 	return &album, nil
 }
 
-func (c *Client) updateAlbum(album *Album) error {
-	jsonData, err := json.Marshal(album)
-	if err != nil {
-		return err
-	}
-
-	endpoint := fmt.Sprintf("/api/v1/album/%d", album.ID)
-
-	resp, err := c.makeRequest("PUT", endpoint, strings.NewReader(string(jsonData)))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to update album: status %d, body: %s", resp.StatusCode, string(body))
-	}
-
-	return nil
-}
-
 func (c *Client) deleteTrackFile(trackFileID int) error {
 	endpoint := fmt.Sprintf("/api/v1/trackfile/%d", trackFileID)
 
@@ -353,19 +321,36 @@ func (c *Client) SearchAlbum(albumIDs []int) error {
 	return nil
 }
 
-func (c *Client) MonitorAlbum(albumID int) error {
-	album, err := c.getAlbum(albumID)
-	if err != nil {
-		return fmt.Errorf("failed to get album: %w", err)
+func (c *Client) setAlbumMonitored(albumID int, monitored bool) error {
+	payload := struct {
+		AlbumIDs  []int `json:"albumIds"`
+		Monitored bool  `json:"monitored"`
+	}{
+		AlbumIDs:  []int{albumID},
+		Monitored: monitored,
 	}
 
-	album.Monitored = true
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal monitor request: %w", err)
+	}
 
-	if err := c.updateAlbum(album); err != nil {
-		return fmt.Errorf("failed to monitor album: %w", err)
+	resp, err := c.makeRequest("PUT", "/api/v1/album/monitor", strings.NewReader(string(jsonData)))
+	if err != nil {
+		return fmt.Errorf("failed to update album monitored state: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to update album monitored state: status %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	return nil
+}
+
+func (c *Client) MonitorAlbum(albumID int) error {
+	return c.setAlbumMonitored(albumID, true)
 }
 
 func (c *Client) GetArtist(artistID int) (*Artist, error) {
