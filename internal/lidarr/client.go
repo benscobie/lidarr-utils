@@ -92,13 +92,6 @@ type TrackFile struct {
 	} `json:"mediaInfo"`
 }
 
-type Command struct {
-	ID        int    `json:"id"`
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	StartedOn string `json:"startedOn,omitempty"`
-}
-
 func NewClient(baseURL, apiKey string) *Client {
 	return &Client{
 		baseURL: strings.TrimSuffix(baseURL, "/"),
@@ -277,25 +270,6 @@ func (c *Client) deleteTrackFile(trackFileID int) error {
 	return nil
 }
 
-func (c *Client) GetCommands() ([]Command, error) {
-	resp, err := c.makeRequest("GET", "/api/v1/command", nil)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
-	}
-
-	var commands []Command
-	if err := json.NewDecoder(resp.Body).Decode(&commands); err != nil {
-		return nil, err
-	}
-
-	return commands, nil
-}
-
 func (c *Client) SearchAlbum(albumIDs []int) error {
 	commandData := map[string]interface{}{
 		"name":     "AlbumSearch",
@@ -349,8 +323,32 @@ func (c *Client) setAlbumMonitored(albumID int, monitored bool) error {
 	return nil
 }
 
-func (c *Client) MonitorAlbum(albumID int) error {
-	return c.setAlbumMonitored(albumID, true)
+func (c *Client) MonitorAlbums(albumIDs []int) error {
+	payload := struct {
+		AlbumIDs  []int `json:"albumIds"`
+		Monitored bool  `json:"monitored"`
+	}{
+		AlbumIDs:  albumIDs,
+		Monitored: true,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal monitor request: %w", err)
+	}
+
+	resp, err := c.makeRequest("PUT", "/api/v1/album/monitor", strings.NewReader(string(jsonData)))
+	if err != nil {
+		return fmt.Errorf("failed to update album monitored state: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to update album monitored state: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
 }
 
 func (c *Client) GetArtist(artistID int) (*Artist, error) {
