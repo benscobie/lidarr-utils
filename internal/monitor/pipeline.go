@@ -47,7 +47,7 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 	// Stage 2: Search consumer
 	searchDone := make(chan int, 1)
 	go func() {
-		searched := m.queue.ProcessSearches(albumChan)
+		searched := m.queue.ProcessAlbums(albumChan)
 		searchDone <- searched
 	}()
 
@@ -79,7 +79,7 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 			default:
 				stats.SinglesMonitored++
 			}
-			log.Printf("  Monitor: %s (%s)", album.Title, album.AlbumType)
+			log.Printf("  Selected: %s (%s)", album.Title, album.AlbumType)
 		}
 
 		for _, skipped := range result.Skipped {
@@ -154,16 +154,6 @@ func (m *Monitor) processArtist(artistID int, artistName string) (*SelectionResu
 	}
 
 	result := SelectAlbumsToMonitor(albums, m.officialOnly, m.excludeSecondaryTypes)
-
-	// Set monitored in Lidarr
-	for _, album := range result.ToMonitor {
-		if m.dryRun {
-			continue
-		}
-		if err := m.client.MonitorAlbum(album.ID); err != nil {
-			log.Printf("ERROR: Failed to monitor album %s: %v", album.Title, err)
-		}
-	}
 
 	return &result, nil
 }

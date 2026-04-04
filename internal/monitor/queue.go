@@ -33,13 +33,18 @@ func NewSearchQueue(client *lidarr.Client, config QueueConfig, dryRun bool) *Sea
 	}
 }
 
-func (q *SearchQueue) ProcessSearches(albumChan <-chan common.Album) int {
+func (q *SearchQueue) ProcessAlbums(albumChan <-chan common.Album) int {
 	searched := 0
 
 	for album := range albumChan {
 		if q.dryRun {
-			log.Printf("  [DRY RUN] Would search for: %s", album.Title)
+			log.Printf("  [DRY RUN] Would monitor and search: %s", album.Title)
 			searched++
+			continue
+		}
+
+		if err := q.client.MonitorAlbum(album.ID); err != nil {
+			log.Printf("  ERROR: Failed to monitor album %s, skipping search: %v", album.Title, err)
 			continue
 		}
 
@@ -48,7 +53,7 @@ func (q *SearchQueue) ProcessSearches(albumChan <-chan common.Album) int {
 			continue
 		}
 
-		log.Printf("  Queued search: %s", album.Title)
+		log.Printf("  Monitored and queued search: %s", album.Title)
 		searched++
 
 		if err := q.waitForSlot(); err != nil {
