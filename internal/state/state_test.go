@@ -8,7 +8,7 @@ import (
 )
 
 func TestLoad_FileNotFound_ReturnsEmptyState(t *testing.T) {
-	s, err := Load("/tmp/nonexistent-state-file-12345.json")
+	s, err := Load(filepath.Join(t.TempDir(), "nonexistent.json"))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

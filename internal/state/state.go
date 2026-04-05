@@ -88,6 +88,7 @@ func (s *State) Save() error {
 	}
 
 	if err := os.Rename(tmpPath, s.path); err != nil {
+		os.Remove(tmpPath) // best-effort cleanup
 		return fmt.Errorf("renaming temporary state file: %w", err)
 	}
 
