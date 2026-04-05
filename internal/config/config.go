@@ -33,6 +33,7 @@ type MonitorConfig struct {
 	OfficialOnly          bool        `mapstructure:"official_only"`
 	ExcludeSecondaryTypes []string    `mapstructure:"exclude_secondary_types"`
 	ExcludeFormats        []string    `mapstructure:"exclude_formats"`
+	ExcludeVAReleases     bool        `mapstructure:"exclude_va_releases"`
 }
 
 type ScheduleConfig struct {
@@ -67,6 +68,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	viper.BindEnv("monitor.official_only", "LIDARR_UTILS_MONITOR_OFFICIAL_ONLY")
 	viper.BindEnv("monitor.exclude_secondary_types", "LIDARR_UTILS_MONITOR_EXCLUDE_SECONDARY_TYPES")
 	viper.BindEnv("monitor.exclude_formats", "LIDARR_UTILS_MONITOR_EXCLUDE_FORMATS")
+	viper.BindEnv("monitor.exclude_va_releases", "LIDARR_UTILS_MONITOR_EXCLUDE_VA_RELEASES")
 	viper.BindEnv("schedule.enabled", "LIDARR_UTILS_SCHEDULE_ENABLED")
 	viper.BindEnv("schedule.cron", "LIDARR_UTILS_SCHEDULE_CRON")
 	viper.BindEnv("schedule.run_once", "LIDARR_UTILS_SCHEDULE_RUN_ONCE")
@@ -79,6 +81,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	viper.SetDefault("monitor.official_only", false)
 	viper.SetDefault("monitor.exclude_secondary_types", []string{})
 	viper.SetDefault("monitor.exclude_formats", []string{})
+	viper.SetDefault("monitor.exclude_va_releases", false)
 	viper.SetDefault("schedule.enabled", false)
 	viper.SetDefault("schedule.cron", "0 2 * * *") // 2 AM daily
 	viper.SetDefault("schedule.run_once", true)
@@ -125,6 +128,7 @@ func (c *Config) Print() {
 	fmt.Printf("    Official Only: %v\n", c.Monitor.OfficialOnly)
 	fmt.Printf("    Exclude Secondary Types: %v\n", c.Monitor.ExcludeSecondaryTypes)
 	fmt.Printf("    Exclude Formats: %v\n", c.Monitor.ExcludeFormats)
+	fmt.Printf("    Exclude VA Releases: %v\n", c.Monitor.ExcludeVAReleases)
 	fmt.Printf("  Schedule Enabled: %v\n", c.Schedule.Enabled)
 	if c.Schedule.Enabled {
 		fmt.Printf("  Schedule Cron: %s\n", c.Schedule.Cron)

@@ -18,6 +18,7 @@ var (
 	officialOnly          bool
 	excludeSecondaryTypes []string
 	excludeFormats        []string
+	excludeVAReleases     bool
 )
 
 var monitorCmd = &cobra.Command{
@@ -35,6 +36,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&officialOnly, "official-only", false, "only process albums with no secondary types")
 	monitorCmd.Flags().StringSliceVar(&excludeSecondaryTypes, "exclude-secondary-types", nil, "secondary types to exclude (comma-separated)")
 	monitorCmd.Flags().StringSliceVar(&excludeFormats, "exclude-formats", nil, "release formats to exclude (comma-separated, e.g. Vinyl,Cassette)")
+	monitorCmd.Flags().BoolVar(&excludeVAReleases, "exclude-va-releases", false, "exclude singles/EPs that are part of Various Artists compilations (queries MusicBrainz)")
 	rootCmd.AddCommand(monitorCmd)
 }
 
@@ -56,6 +58,9 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 	}
 	if cmd.Flags().Changed("exclude-formats") {
 		cfg.Monitor.ExcludeFormats = excludeFormats
+	}
+	if cmd.Flags().Changed("exclude-va-releases") {
+		cfg.Monitor.ExcludeVAReleases = excludeVAReleases
 	}
 
 	logFileHandle, err := setupLoggingFromConfig(cfg)
