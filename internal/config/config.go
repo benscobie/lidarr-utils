@@ -140,6 +140,7 @@ func (c *Config) Print() {
 	fmt.Printf("  Dry Run: %v\n", c.App.DryRun)
 	fmt.Printf("  Log Level: %s\n", c.App.LogLevel)
 	fmt.Printf("  Log File: %s\n", c.App.LogFile)
+	fmt.Printf("  State File: %s\n", c.App.StateFile)
 	fmt.Printf("  Dedupe:\n")
 	fmt.Printf("    Add Import Exclusion: %v\n", c.Dedupe.AddImportExclusion)
 	fmt.Printf("  Monitor:\n")

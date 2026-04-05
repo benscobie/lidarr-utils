@@ -30,8 +30,10 @@ A collection of Go-based utilities for managing your Lidarr music library. Curre
   > ID when available, falling back to normalised title comparison.
 
 - Filters by secondary album types (e.g. exclude Live, Compilation)
+- Excludes singles/EPs from Various Artists compilations via MusicBrainz lookup
 - Batch monitor and search via Lidarr's API
 - Process a single artist or all artists at once
+- Tracks previously monitored albums in a local state file (`state.json`) so that manually unmonitored albums are not re-monitored on subsequent runs. To reset this behavior, delete the `state.json` file located next to your config file.
 
 ### Common
 
@@ -89,6 +91,7 @@ monitor:
   official_only: false
   exclude_secondary_types: []
   exclude_formats: []
+  exclude_va_releases: false
 
 # Scheduling settings (dedupe only)
 schedule:
@@ -117,6 +120,7 @@ export LIDARR_UTILS_DEDUPE_ADD_IMPORT_EXCLUSION="false"
 # Monitor settings
 export LIDARR_UTILS_MONITOR_OFFICIAL_ONLY="false"
 export LIDARR_UTILS_MONITOR_EXCLUDE_SECONDARY_TYPES=""
+export LIDARR_UTILS_MONITOR_EXCLUDE_VA_RELEASES="false"
 
 # Schedule settings
 export LIDARR_UTILS_SCHEDULE_ENABLED="false"
@@ -162,6 +166,9 @@ export LIDARR_UTILS_SCHEDULE_RUN_ONCE="true"
 
 # Exclude specific secondary types
 ./lidarr-utils monitor --all --exclude-secondary-types=Live,Compilation
+
+# Exclude singles/EPs from Various Artists compilations
+./lidarr-utils monitor --all --exclude-va-releases
 ```
 
 ### Docker
@@ -215,7 +222,7 @@ docker-compose up -d
 
 1. **Album Selection** -- retrieves all albums for each artist and groups them by priority: Album > EP > Single
 2. **Track Coverage** -- builds a set of MusicBrainz Recording IDs already covered by higher-priority releases. Lower-priority releases whose tracks are fully covered are skipped.
-3. **Filtering** -- applies secondary type filters (`--official-only`, `--exclude-secondary-types`) to remove unwanted release types
+3. **Filtering** -- applies secondary type filters (`--official-only`, `--exclude-secondary-types`) and optionally excludes VA compilation singles (`--exclude-va-releases`) via MusicBrainz lookup
 4. **Monitor & Search** -- batch monitors selected albums and submits a single album search to Lidarr, which processes them sequentially
 
 ## Safety Features
