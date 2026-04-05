@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/spf13/viper"
 )
@@ -20,9 +22,10 @@ type LidarrConfig struct {
 }
 
 type AppConfig struct {
-	DryRun   bool   `mapstructure:"dry_run"`
-	LogLevel string `mapstructure:"log_level"`
-	LogFile  string `mapstructure:"log_file"`
+	DryRun    bool   `mapstructure:"dry_run"`
+	LogLevel  string `mapstructure:"log_level"`
+	LogFile   string `mapstructure:"log_file"`
+	StateFile string `mapstructure:"state_file"`
 }
 
 type DedupeConfig struct {
@@ -93,6 +96,21 @@ func LoadConfig(configPath string) (*Config, error) {
 		} else {
 			return nil, fmt.Errorf("error reading config file: %w", err)
 		}
+	}
+
+	// Auto-resolve state file path if not explicitly set
+	if viper.GetString("app.state_file") == "" {
+		var stateDir string
+		if cf := viper.ConfigFileUsed(); cf != "" {
+			stateDir = filepath.Dir(cf)
+		} else {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return nil, fmt.Errorf("unable to determine home directory: %w", err)
+			}
+			stateDir = filepath.Join(home, ".lidarr-utils")
+		}
+		viper.SetDefault("app.state_file", filepath.Join(stateDir, "state.json"))
 	}
 
 	var config Config
