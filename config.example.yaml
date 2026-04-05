@@ -11,7 +11,7 @@ app:
   dry_run: false                  # Set to true for a dry run (preview only)
   log_level: "info"               # Log level: debug, info, warn, error
   log_file: "lidarr-utils.log"   # Path to log file (optional)
-  # state_file: ~/.lidarr-utils/state.json  # Path to state file (auto-resolved from config dir)
+  # state_file: /home/user/.lidarr-utils/state.json  # Path to state file (auto-resolved from config dir)
 
 # Dedupe command settings
 dedupe:

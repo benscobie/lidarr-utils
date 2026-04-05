@@ -81,6 +81,7 @@ func (s *State) Save() error {
 	if err != nil {
 		return fmt.Errorf("marshaling state: %w", err)
 	}
+	data = append(data, '\n')
 
 	tmpPath := s.path + ".tmp"
 	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
