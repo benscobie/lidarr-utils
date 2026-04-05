@@ -9,6 +9,7 @@ import (
 	"github.com/lidarr-utils/internal/common"
 	"github.com/lidarr-utils/internal/lidarr"
 	"github.com/lidarr-utils/internal/musicbrainz"
+	"github.com/lidarr-utils/internal/state"
 )
 
 type Monitor struct {
@@ -18,6 +19,7 @@ type Monitor struct {
 	excludeSecondaryTypes []string
 	excludeFormats        []string
 	mbClient              *musicbrainz.Client
+	state                 *state.State
 }
 
 type Stats struct {
@@ -28,11 +30,12 @@ type Stats struct {
 	EPsSkipped       int
 	SinglesSkipped   int
 	Excluded         int
+	UserUnmonitored  int
 	SearchesSubmitted int
 	Warnings         int
 }
 
-func NewMonitor(client *lidarr.Client, dryRun bool, officialOnly bool, excludeSecondaryTypes []string, excludeFormats []string, mbClient *musicbrainz.Client) *Monitor {
+func NewMonitor(client *lidarr.Client, dryRun bool, officialOnly bool, excludeSecondaryTypes []string, excludeFormats []string, mbClient *musicbrainz.Client, st *state.State) *Monitor {
 	return &Monitor{
 		client:                client,
 		dryRun:                dryRun,
@@ -40,6 +43,7 @@ func NewMonitor(client *lidarr.Client, dryRun bool, officialOnly bool, excludeSe
 		excludeSecondaryTypes: excludeSecondaryTypes,
 		excludeFormats:        excludeFormats,
 		mbClient:              mbClient,
+		state:                 st,
 	}
 }
 
@@ -112,6 +116,14 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 		allAlbums = append(allAlbums, result.ToMonitor...)
 	}
 
+	// Filter out albums the user has manually unmonitored
+	var userSkipped []common.Album
+	allAlbums, userSkipped = filterUserUnmonitored(allAlbums, m.state)
+	for _, album := range userSkipped {
+		stats.UserUnmonitored++
+		log.Printf("  Skipping %s - %s — previously unmonitored by user", album.ArtistName, album.Title)
+	}
+
 	if len(allAlbums) == 0 {
 		log.Println("No albums to monitor or search")
 		return stats, nil
@@ -133,6 +145,15 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 	}
 	log.Printf("Monitored %d albums", len(albumIDs))
 
+	if m.state != nil {
+		for _, album := range allAlbums {
+			m.state.RecordAlbum(album.ID, album.ArtistName, album.Title)
+		}
+		if err := m.state.Save(); err != nil {
+			log.Printf("WARNING: failed to save state file: %v", err)
+		}
+	}
+
 	if err := m.client.SearchAlbum(albumIDs); err != nil {
 		return stats, fmt.Errorf("failed to search albums: %w", err)
 	}
@@ -140,6 +161,20 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 
 	stats.SearchesSubmitted = len(albumIDs)
 	return stats, nil
+}
+
+func filterUserUnmonitored(candidates []common.Album, s *state.State) (kept []common.Album, skipped []common.Album) {
+	if s == nil {
+		return candidates, nil
+	}
+	for _, album := range candidates {
+		if s.WasPreviouslyMonitored(album.ID) && !album.Monitored {
+			skipped = append(skipped, album)
+		} else {
+			kept = append(kept, album)
+		}
+	}
+	return kept, skipped
 }
 
 func (m *Monitor) processArtist(artistID int, artistName string) (*SelectionResult, error) {
@@ -231,6 +266,9 @@ func (m *Monitor) PrintSummary(stats *Stats, duration time.Duration) {
 	fmt.Printf("EPs skipped: %d\n", stats.EPsSkipped)
 	fmt.Printf("Singles skipped: %d\n", stats.SinglesSkipped)
 	fmt.Printf("Excluded: %d\n", stats.Excluded)
+	if stats.UserUnmonitored > 0 {
+		fmt.Printf("User unmonitored (skipped): %d\n", stats.UserUnmonitored)
+	}
 	fmt.Printf("Searches submitted: %d\n", stats.SearchesSubmitted)
 	if stats.Warnings > 0 {
 		fmt.Printf("Warnings: %d\n", stats.Warnings)

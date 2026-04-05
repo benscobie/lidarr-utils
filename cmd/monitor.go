@@ -95,6 +95,7 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 		cfg.Monitor.ExcludeSecondaryTypes,
 		cfg.Monitor.ExcludeFormats,
 		mbClient,
+		nil, // state loaded in a later task
 	)
 
 	var artistIDs []int
