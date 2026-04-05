@@ -8,6 +8,7 @@ import (
 
 	"github.com/lidarr-utils/internal/common"
 	"github.com/lidarr-utils/internal/lidarr"
+	"github.com/lidarr-utils/internal/musicbrainz"
 )
 
 type Monitor struct {
@@ -16,6 +17,7 @@ type Monitor struct {
 	officialOnly          bool
 	excludeSecondaryTypes []string
 	excludeFormats        []string
+	mbClient              *musicbrainz.Client
 }
 
 type Stats struct {
@@ -30,13 +32,14 @@ type Stats struct {
 	Warnings         int
 }
 
-func NewMonitor(client *lidarr.Client, dryRun bool, officialOnly bool, excludeSecondaryTypes []string, excludeFormats []string) *Monitor {
+func NewMonitor(client *lidarr.Client, dryRun bool, officialOnly bool, excludeSecondaryTypes []string, excludeFormats []string, mbClient *musicbrainz.Client) *Monitor {
 	return &Monitor{
 		client:                client,
 		dryRun:                dryRun,
 		officialOnly:          officialOnly,
 		excludeSecondaryTypes: excludeSecondaryTypes,
 		excludeFormats:        excludeFormats,
+		mbClient:              mbClient,
 	}
 }
 
@@ -87,7 +90,9 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 
 		for _, excluded := range result.Excluded {
 			stats.Excluded++
-			if len(excluded.Releases) > 0 && common.ShouldExcludeByFormat(excluded, m.excludeFormats) {
+			if excluded.IsVACompilation {
+				// Already logged in processArtist with compilation source name
+			} else if len(excluded.Releases) > 0 && common.ShouldExcludeByFormat(excluded, m.excludeFormats) {
 				formats := make([]string, 0, len(excluded.Releases))
 				for _, r := range excluded.Releases {
 					formats = append(formats, r.Format)
@@ -178,6 +183,7 @@ func (m *Monitor) processArtist(artistID int, artistName string) (*SelectionResu
 			SecondaryTypes: la.SecondaryTypes,
 			ArtistID:       la.ArtistID,
 			ArtistName:     artistName,
+			ForeignAlbumID: la.ForeignAlbumID,
 			Tracks:         commonTracks,
 			Releases:       commonReleases,
 			HasFiles:       la.Statistics != nil && la.Statistics.TrackFileCount > 0,
@@ -186,6 +192,31 @@ func (m *Monitor) processArtist(artistID int, artistName string) (*SelectionResu
 	}
 
 	result := SelectAlbumsToMonitor(albums, m.officialOnly, m.excludeSecondaryTypes, m.excludeFormats)
+
+	if m.mbClient != nil {
+		var kept []common.Album
+		for _, album := range result.ToMonitor {
+			if album.ForeignAlbumID == "" {
+				kept = append(kept, album)
+				continue
+			}
+			source, err := m.mbClient.VACompilationSource(album.ForeignAlbumID)
+			if err != nil {
+				log.Printf("  Warning: MusicBrainz lookup failed for %s: %v", album.Title, err)
+				kept = append(kept, album)
+				continue
+			}
+			if source != "" {
+				album.IsVACompilation = true
+				result.Excluded = append(result.Excluded, album)
+				log.Printf("  Exclude: %s (%s) — VA compilation single (from: %s)",
+					album.Title, album.AlbumType, source)
+			} else {
+				kept = append(kept, album)
+			}
+		}
+		result.ToMonitor = kept
+	}
 
 	return &result, nil
 }

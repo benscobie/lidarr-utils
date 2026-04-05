@@ -10,6 +10,7 @@ import (
 
 	"github.com/lidarr-utils/internal/lidarr"
 	"github.com/lidarr-utils/internal/monitor"
+	"github.com/lidarr-utils/internal/musicbrainz"
 )
 
 var (
@@ -82,12 +83,18 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 	}
 	log.Println("Successfully connected to Lidarr")
 
+	var mbClient *musicbrainz.Client
+	if cfg.Monitor.ExcludeVAReleases {
+		mbClient = musicbrainz.NewClient()
+	}
+
 	mon := monitor.NewMonitor(
 		client,
 		cfg.App.DryRun,
 		cfg.Monitor.OfficialOnly,
 		cfg.Monitor.ExcludeSecondaryTypes,
 		cfg.Monitor.ExcludeFormats,
+		mbClient,
 	)
 
 	var artistIDs []int
