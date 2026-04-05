@@ -11,6 +11,7 @@ import (
 	"github.com/lidarr-utils/internal/lidarr"
 	"github.com/lidarr-utils/internal/monitor"
 	"github.com/lidarr-utils/internal/musicbrainz"
+	"github.com/lidarr-utils/internal/state"
 )
 
 var (
@@ -75,6 +76,12 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 	cfg.Print()
 	fmt.Println()
 
+	st, err := state.Load(cfg.App.StateFile)
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+	log.Printf("Loaded state: %d previously monitored albums", len(st.MonitoredAlbums))
+
 	client := lidarr.NewClient(cfg.Lidarr.URL, cfg.Lidarr.APIKey)
 
 	log.Println("Testing connection to Lidarr...")
@@ -95,7 +102,7 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 		cfg.Monitor.ExcludeSecondaryTypes,
 		cfg.Monitor.ExcludeFormats,
 		mbClient,
-		nil, // state loaded in a later task
+		st,
 	)
 
 	var artistIDs []int
