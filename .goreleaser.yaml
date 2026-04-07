@@ -1,0 +1,91 @@
+version: 2
+
+builds:
+  - binary: lidarr-utils
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -w -s -X github.com/lidarr-utils/cmd.version={{.Version}}
+
+archives:
+  - formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md
+      - LICENSE
+      - config.example.yaml
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+    - title: Others
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+
+dockers:
+  - image_templates:
+      - "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}-amd64"
+      - "benscobie/lidarr-utils:{{ .Version }}-amd64"
+    use: buildx
+    dockerfile: Dockerfile.goreleaser
+    build_flag_templates:
+      - "--platform=linux/amd64"
+    extra_files:
+      - config.example.yaml
+    goarch: amd64
+
+  - image_templates:
+      - "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}-arm64"
+      - "benscobie/lidarr-utils:{{ .Version }}-arm64"
+    use: buildx
+    dockerfile: Dockerfile.goreleaser
+    build_flag_templates:
+      - "--platform=linux/arm64"
+    extra_files:
+      - config.example.yaml
+    goarch: arm64
+
+docker_manifests:
+  - name_template: "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}"
+    image_templates:
+      - "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}-amd64"
+      - "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}-arm64"
+
+  - name_template: "forgejo.home.arpa/ben/lidarr-utils:latest"
+    image_templates:
+      - "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}-amd64"
+      - "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}-arm64"
+
+  - name_template: "benscobie/lidarr-utils:{{ .Version }}"
+    image_templates:
+      - "benscobie/lidarr-utils:{{ .Version }}-amd64"
+      - "benscobie/lidarr-utils:{{ .Version }}-arm64"
+
+  - name_template: "benscobie/lidarr-utils:latest"
+    image_templates:
+      - "benscobie/lidarr-utils:{{ .Version }}-amd64"
+      - "benscobie/lidarr-utils:{{ .Version }}-arm64"
