@@ -113,6 +113,7 @@ export LIDARR_UTILS_LIDARR_API_KEY="your-api-key-here"
 export LIDARR_UTILS_APP_DRY_RUN="true"
 export LIDARR_UTILS_APP_LOG_LEVEL="info"
 export LIDARR_UTILS_APP_LOG_FILE="lidarr-utils.log"
+export LIDARR_UTILS_APP_STATE_FILE="~/.lidarr-utils/state.json"
 
 # Dedupe settings
 export LIDARR_UTILS_DEDUPE_ADD_IMPORT_EXCLUSION="false"
@@ -120,6 +121,7 @@ export LIDARR_UTILS_DEDUPE_ADD_IMPORT_EXCLUSION="false"
 # Monitor settings
 export LIDARR_UTILS_MONITOR_OFFICIAL_ONLY="false"
 export LIDARR_UTILS_MONITOR_EXCLUDE_SECONDARY_TYPES=""
+export LIDARR_UTILS_MONITOR_EXCLUDE_FORMATS=""
 export LIDARR_UTILS_MONITOR_EXCLUDE_VA_RELEASES="false"
 
 # Schedule settings
