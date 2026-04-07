@@ -45,7 +45,7 @@ jobs:
           password: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
 
       - name: Install GoReleaser
-        run: go install github.com/goreleaser/goreleaser/v2@latest
+        run: go install github.com/goreleaser/goreleaser/v2@v2.15.2
 
       - name: Run GoReleaser
         run: goreleaser release --clean
