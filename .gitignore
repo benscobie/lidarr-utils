@@ -49,6 +49,9 @@ config.json
 !config.example.yaml
 !config.example.yml
 
+# Temp app data
+state.json
+
 # Docker artifacts
 .dockerignore
 
