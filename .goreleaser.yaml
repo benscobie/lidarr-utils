@@ -46,46 +46,16 @@ changelog:
       - '^test:'
       - '^ci:'
 
-dockers:
-  - image_templates:
-      - "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}-amd64"
-      - "benscobie/lidarr-utils:{{ .Version }}-amd64"
-    use: buildx
+dockers_v2:
+  - images:
+      - "forgejo.home.arpa/ben/lidarr-utils"
+      - "benscobie/lidarr-utils"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
     dockerfile: Dockerfile.goreleaser
-    build_flag_templates:
-      - "--platform=linux/amd64"
     extra_files:
       - config.example.yaml
-    goarch: amd64
-
-  - image_templates:
-      - "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}-arm64"
-      - "benscobie/lidarr-utils:{{ .Version }}-arm64"
-    use: buildx
-    dockerfile: Dockerfile.goreleaser
-    build_flag_templates:
-      - "--platform=linux/arm64"
-    extra_files:
-      - config.example.yaml
-    goarch: arm64
-
-docker_manifests:
-  - name_template: "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}"
-    image_templates:
-      - "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}-amd64"
-      - "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}-arm64"
-
-  - name_template: "forgejo.home.arpa/ben/lidarr-utils:latest"
-    image_templates:
-      - "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}-amd64"
-      - "forgejo.home.arpa/ben/lidarr-utils:{{ .Version }}-arm64"
-
-  - name_template: "benscobie/lidarr-utils:{{ .Version }}"
-    image_templates:
-      - "benscobie/lidarr-utils:{{ .Version }}-amd64"
-      - "benscobie/lidarr-utils:{{ .Version }}-arm64"
-
-  - name_template: "benscobie/lidarr-utils:latest"
-    image_templates:
-      - "benscobie/lidarr-utils:{{ .Version }}-amd64"
-      - "benscobie/lidarr-utils:{{ .Version }}-arm64"
+    platforms:
+      - linux/amd64
+      - linux/arm64
