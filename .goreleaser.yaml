@@ -1,5 +1,10 @@
 version: 2
 
+gitea_urls:
+  api: https://forgejo.home.arpa/api/v1
+  download: https://forgejo.home.arpa
+  skip_tls_verify: false
+
 builds:
   - binary: lidarr-utils
     env:

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -82,6 +83,10 @@ func (s *State) Save() error {
 		return fmt.Errorf("marshaling state: %w", err)
 	}
 	data = append(data, '\n')
+
+	if err := os.MkdirAll(filepath.Dir(s.path), 0755); err != nil {
+		return fmt.Errorf("creating state directory: %w", err)
+	}
 
 	tmpPath := s.path + ".tmp"
 	if err := os.WriteFile(tmpPath, data, 0644); err != nil {

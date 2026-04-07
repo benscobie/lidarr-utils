@@ -50,4 +50,4 @@ jobs:
       - name: Run GoReleaser
         run: goreleaser release --clean
         env:
-          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          GITEA_TOKEN: ${{ secrets.FORGEJO_TOKEN }}

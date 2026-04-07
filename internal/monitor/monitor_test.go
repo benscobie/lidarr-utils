@@ -381,4 +381,3 @@ func TestSelectAlbumsToMonitor_FormatFilterBeforeTrackCoverage(t *testing.T) {
 		t.Fatalf("expected 0 skipped (format filter runs before coverage), got %d", len(result.Skipped))
 	}
 }
-

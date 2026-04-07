@@ -67,6 +67,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	viper.BindEnv("app.dry_run", "LIDARR_UTILS_APP_DRY_RUN")
 	viper.BindEnv("app.log_level", "LIDARR_UTILS_APP_LOG_LEVEL")
 	viper.BindEnv("app.log_file", "LIDARR_UTILS_APP_LOG_FILE")
+	viper.BindEnv("app.state_file", "LIDARR_UTILS_APP_STATE_FILE")
 	viper.BindEnv("dedupe.add_import_exclusion", "LIDARR_UTILS_DEDUPE_ADD_IMPORT_EXCLUSION")
 	viper.BindEnv("monitor.official_only", "LIDARR_UTILS_MONITOR_OFFICIAL_ONLY")
 	viper.BindEnv("monitor.exclude_secondary_types", "LIDARR_UTILS_MONITOR_EXCLUDE_SECONDARY_TYPES")
