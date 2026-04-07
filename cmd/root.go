@@ -19,10 +19,11 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "lidarr-utils",
-	Short: "A collection of useful Lidarr utilities",
-	Long: `lidarr-utils provides a collection of commands for managing your Lidarr library,
+	Use:     "lidarr-utils",
+	Short:   "A collection of useful Lidarr utilities",
+	Long:    `lidarr-utils provides a collection of commands for managing your Lidarr library,
 including deduplication of singles and monitoring of new releases.`,
+	Version: version,
 }
 
 func Execute() {
