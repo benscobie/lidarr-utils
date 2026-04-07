@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lidarr-utils/internal/common"
+	"github.com/benscobie/lidarr-utils/internal/common"
 )
 
 type SelectionResult struct {

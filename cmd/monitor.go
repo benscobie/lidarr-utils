@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/lidarr-utils/internal/lidarr"
-	"github.com/lidarr-utils/internal/monitor"
-	"github.com/lidarr-utils/internal/musicbrainz"
-	"github.com/lidarr-utils/internal/state"
+	"github.com/benscobie/lidarr-utils/internal/lidarr"
+	"github.com/benscobie/lidarr-utils/internal/monitor"
+	"github.com/benscobie/lidarr-utils/internal/musicbrainz"
+	"github.com/benscobie/lidarr-utils/internal/state"
 )
 
 var (
@@ -95,15 +95,15 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 		mbClient = musicbrainz.NewClient()
 	}
 
-	mon := monitor.NewMonitor(
-		client,
-		cfg.App.DryRun,
-		cfg.Monitor.OfficialOnly,
-		cfg.Monitor.ExcludeSecondaryTypes,
-		cfg.Monitor.ExcludeFormats,
-		mbClient,
-		st,
-	)
+	mon := monitor.NewMonitor(monitor.MonitorOptions{
+		Client:                client,
+		DryRun:                cfg.App.DryRun,
+		OfficialOnly:          cfg.Monitor.OfficialOnly,
+		ExcludeSecondaryTypes: cfg.Monitor.ExcludeSecondaryTypes,
+		ExcludeFormats:        cfg.Monitor.ExcludeFormats,
+		MBClient:              mbClient,
+		State:                 st,
+	})
 
 	var artistIDs []int
 	if allArtists {

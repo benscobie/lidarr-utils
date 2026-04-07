@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lidarr-utils/internal/common"
-	"github.com/lidarr-utils/internal/lidarr"
+	"github.com/benscobie/lidarr-utils/internal/common"
+	"github.com/benscobie/lidarr-utils/internal/lidarr"
 )
 
 type Deduper struct {
@@ -76,20 +76,12 @@ func (d *Deduper) findDuplicatesForArtist(artistID int, artistName string) ([]Du
 			continue
 		}
 
-		// Convert tracks
-		var processedTracks []common.Track
+		processedTracks := lidarr.ConvertTracks(tracks)
 		hasFiles := false
-		for _, track := range tracks {
-			processedTracks = append(processedTracks, common.Track{
-				ID:                 track.ID,
-				Title:              track.Title,
-				ForeignTrackID:     track.ForeignTrackID,
-				ForeignRecordingID: track.ForeignRecordingID,
-				TrackNumber:        track.TrackNumber,
-				HasFile:            track.HasFile,
-			})
+		for _, track := range processedTracks {
 			if track.HasFile {
 				hasFiles = true
+				break
 			}
 		}
 

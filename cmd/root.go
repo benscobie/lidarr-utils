@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/lidarr-utils/internal/config"
+	"github.com/benscobie/lidarr-utils/internal/config"
 )
 
 var (

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/lidarr-utils/internal/lidarr"
+	"github.com/benscobie/lidarr-utils/internal/lidarr"
 )
 
 // mockArtistResolver implements the interface needed by resolveArtistIDs

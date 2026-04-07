@@ -15,7 +15,7 @@ builds:
       - goos: windows
         goarch: arm64
     ldflags:
-      - -w -s -X github.com/lidarr-utils/cmd.version={{.Version}}
+      - -w -s -X github.com/benscobie/lidarr-utils/cmd.version={{.Version}}
 
 archives:
   - formats:

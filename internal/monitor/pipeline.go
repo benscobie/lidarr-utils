@@ -6,45 +6,41 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lidarr-utils/internal/common"
-	"github.com/lidarr-utils/internal/lidarr"
-	"github.com/lidarr-utils/internal/musicbrainz"
-	"github.com/lidarr-utils/internal/state"
+	"github.com/benscobie/lidarr-utils/internal/common"
+	"github.com/benscobie/lidarr-utils/internal/lidarr"
+	"github.com/benscobie/lidarr-utils/internal/musicbrainz"
+	"github.com/benscobie/lidarr-utils/internal/state"
 )
 
+type MonitorOptions struct {
+	Client                *lidarr.Client
+	DryRun                bool
+	OfficialOnly          bool
+	ExcludeSecondaryTypes []string
+	ExcludeFormats        []string
+	MBClient              *musicbrainz.Client
+	State                 *state.State
+}
+
 type Monitor struct {
-	client                *lidarr.Client
-	dryRun                bool
-	officialOnly          bool
-	excludeSecondaryTypes []string
-	excludeFormats        []string
-	mbClient              *musicbrainz.Client
-	state                 *state.State
+	opts MonitorOptions
 }
 
 type Stats struct {
-	ArtistsProcessed int
-	AlbumsSelected  int
-	EPsSelected     int
-	SinglesSelected int
-	EPsSkipped       int
-	SinglesSkipped   int
-	Excluded         int
-	UserUnmonitored  int
+	ArtistsProcessed  int
+	AlbumsSelected    int
+	EPsSelected       int
+	SinglesSelected   int
+	EPsSkipped        int
+	SinglesSkipped    int
+	Excluded          int
+	UserUnmonitored   int
 	SearchesSubmitted int
-	Warnings         int
+	Warnings          int
 }
 
-func NewMonitor(client *lidarr.Client, dryRun bool, officialOnly bool, excludeSecondaryTypes []string, excludeFormats []string, mbClient *musicbrainz.Client, st *state.State) *Monitor {
-	return &Monitor{
-		client:                client,
-		dryRun:                dryRun,
-		officialOnly:          officialOnly,
-		excludeSecondaryTypes: excludeSecondaryTypes,
-		excludeFormats:        excludeFormats,
-		mbClient:              mbClient,
-		state:                 st,
-	}
+func NewMonitor(opts MonitorOptions) *Monitor {
+	return &Monitor{opts: opts}
 }
 
 func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
@@ -53,7 +49,7 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 	var allAlbums []common.Album
 
 	for i, artistID := range artistIDs {
-		artist, err := m.client.GetArtist(artistID)
+		artist, err := m.opts.Client.GetArtist(artistID)
 		if err != nil {
 			log.Printf("ERROR: Failed to get artist %d: %v", artistID, err)
 			continue
@@ -96,7 +92,7 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 			stats.Excluded++
 			if excluded.IsVACompilation {
 				// Already logged in processArtist with compilation source name
-			} else if len(excluded.Releases) > 0 && common.ShouldExcludeByFormat(excluded, m.excludeFormats) {
+			} else if len(excluded.Releases) > 0 && common.ShouldExcludeByFormat(excluded, m.opts.ExcludeFormats) {
 				formats := make([]string, 0, len(excluded.Releases))
 				for _, r := range excluded.Releases {
 					formats = append(formats, r.Format)
@@ -118,7 +114,7 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 
 	// Filter out albums the user has manually unmonitored
 	var userSkipped []common.Album
-	allAlbums, userSkipped = filterUserUnmonitored(allAlbums, m.state)
+	allAlbums, userSkipped = filterUserUnmonitored(allAlbums, m.opts.State)
 	for _, album := range userSkipped {
 		stats.UserUnmonitored++
 		log.Printf("  Skipping %s - %s — previously unmonitored by user", album.ArtistName, album.Title)
@@ -129,7 +125,7 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 		return stats, nil
 	}
 
-	if m.dryRun {
+	if m.opts.DryRun {
 		log.Printf("[DRY RUN] Would monitor and search %d albums", len(allAlbums))
 		stats.SearchesSubmitted = len(allAlbums)
 		return stats, nil
@@ -140,21 +136,21 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 		albumIDs[i] = album.ID
 	}
 
-	if err := m.client.MonitorAlbums(albumIDs); err != nil {
+	if err := m.opts.Client.MonitorAlbums(albumIDs); err != nil {
 		return stats, fmt.Errorf("failed to monitor albums: %w", err)
 	}
 	log.Printf("Monitored %d albums", len(albumIDs))
 
-	if m.state != nil {
+	if m.opts.State != nil {
 		for _, album := range allAlbums {
-			m.state.RecordAlbum(album.ID, album.ArtistName, album.Title)
+			m.opts.State.RecordAlbum(album.ID, album.ArtistName, album.Title)
 		}
-		if err := m.state.Save(); err != nil {
+		if err := m.opts.State.Save(); err != nil {
 			log.Printf("WARNING: failed to save state file: %v", err)
 		}
 	}
 
-	if err := m.client.SearchAlbum(albumIDs); err != nil {
+	if err := m.opts.Client.SearchAlbum(albumIDs); err != nil {
 		return stats, fmt.Errorf("failed to search albums: %w", err)
 	}
 	log.Printf("Submitted search for %d albums", len(albumIDs))
@@ -178,37 +174,16 @@ func filterUserUnmonitored(candidates []common.Album, s *state.State) (kept []co
 }
 
 func (m *Monitor) processArtist(artistID int, artistName string) (*SelectionResult, error) {
-	lidarrAlbums, err := m.client.GetAlbumsByArtist(artistID)
+	lidarrAlbums, err := m.opts.Client.GetAlbumsByArtist(artistID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get albums: %w", err)
 	}
 
 	var albums []common.Album
 	for _, la := range lidarrAlbums {
-		tracks, err := m.client.GetTracksByAlbum(la.ID)
+		tracks, err := m.opts.Client.GetTracksByAlbum(la.ID)
 		if err != nil {
 			log.Printf("Warning: failed to get tracks for album %s: %v", la.Title, err)
-		}
-
-		var commonTracks []common.Track
-		for _, t := range tracks {
-			commonTracks = append(commonTracks, common.Track{
-				ID:                 t.ID,
-				Title:              t.Title,
-				ForeignTrackID:     t.ForeignTrackID,
-				ForeignRecordingID: t.ForeignRecordingID,
-				TrackNumber:        t.TrackNumber,
-				HasFile:            t.HasFile,
-			})
-		}
-
-		var commonReleases []common.Release
-		for _, r := range la.Releases {
-			commonReleases = append(commonReleases, common.Release{
-				ID:        r.ID,
-				Format:    r.Format,
-				Monitored: r.Monitored,
-			})
 		}
 
 		albums = append(albums, common.Album{
@@ -219,23 +194,23 @@ func (m *Monitor) processArtist(artistID int, artistName string) (*SelectionResu
 			ArtistID:       la.ArtistID,
 			ArtistName:     artistName,
 			ForeignAlbumID: la.ForeignAlbumID,
-			Tracks:         commonTracks,
-			Releases:       commonReleases,
+			Tracks:         lidarr.ConvertTracks(tracks),
+			Releases:       lidarr.ConvertReleases(la.Releases),
 			HasFiles:       la.Statistics != nil && la.Statistics.TrackFileCount > 0,
 			Monitored:      la.Monitored,
 		})
 	}
 
-	result := SelectAlbumsToMonitor(albums, m.officialOnly, m.excludeSecondaryTypes, m.excludeFormats)
+	result := SelectAlbumsToMonitor(albums, m.opts.OfficialOnly, m.opts.ExcludeSecondaryTypes, m.opts.ExcludeFormats)
 
-	if m.mbClient != nil {
+	if m.opts.MBClient != nil {
 		var kept []common.Album
 		for _, album := range result.ToMonitor {
 			if album.ForeignAlbumID == "" {
 				kept = append(kept, album)
 				continue
 			}
-			source, err := m.mbClient.VACompilationSource(album.ForeignAlbumID)
+			source, err := m.opts.MBClient.VACompilationSource(album.ForeignAlbumID)
 			if err != nil {
 				log.Printf("  Warning: MusicBrainz lookup failed for %s: %v", album.Title, err)
 				kept = append(kept, album)
@@ -275,7 +250,7 @@ func (m *Monitor) PrintSummary(stats *Stats, duration time.Duration) {
 	}
 	fmt.Println()
 
-	if m.dryRun {
+	if m.opts.DryRun {
 		fmt.Println("This was a dry run. To run for real, remove the --dry-run flag.")
 	}
 }

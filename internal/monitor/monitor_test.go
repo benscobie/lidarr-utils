@@ -3,7 +3,7 @@ package monitor
 import (
 	"testing"
 
-	"github.com/lidarr-utils/internal/common"
+	"github.com/benscobie/lidarr-utils/internal/common"
 )
 
 func TestSelectAlbumsToMonitor_PrefersAlbumsOverEPs(t *testing.T) {

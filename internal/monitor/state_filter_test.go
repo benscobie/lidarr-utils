@@ -3,8 +3,8 @@ package monitor
 import (
 	"testing"
 
-	"github.com/lidarr-utils/internal/common"
-	"github.com/lidarr-utils/internal/state"
+	"github.com/benscobie/lidarr-utils/internal/common"
+	"github.com/benscobie/lidarr-utils/internal/state"
 )
 
 func TestFilterUserUnmonitored_SkipsPreviouslyMonitoredAlbums(t *testing.T) {

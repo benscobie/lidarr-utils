@@ -10,7 +10,7 @@ import (
 
 const (
 	defaultBaseURL   = "https://musicbrainz.org/ws/2"
-	userAgent        = "LidarrDeduper/1.0.0 ( https://github.com/benscobie/ )"
+	userAgent        = "LidarrUtils/1.0.0 ( https://github.com/benscobie/ )"
 	VariousArtistsID = "89ad4ac3-39f7-470e-963a-56509c546377"
 )
 

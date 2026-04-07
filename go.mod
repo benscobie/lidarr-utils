@@ -1,4 +1,4 @@
-module github.com/lidarr-utils
+module github.com/benscobie/lidarr-utils
 
 go 1.26.1
 

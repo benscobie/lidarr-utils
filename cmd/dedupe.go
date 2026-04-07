@@ -11,8 +11,8 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 
-	"github.com/lidarr-utils/internal/dedupe"
-	"github.com/lidarr-utils/internal/lidarr"
+	"github.com/benscobie/lidarr-utils/internal/dedupe"
+	"github.com/benscobie/lidarr-utils/internal/lidarr"
 )
 
 var (
@@ -116,7 +116,7 @@ func runDedupeOnce(deduper *dedupe.Deduper) error {
 func runDedupeScheduled(deduper *dedupe.Deduper, cronExpression string) error {
 	log.Printf("Starting scheduled deduplication with cron expression: %s", cronExpression)
 
-	c := cron.New(cron.WithSeconds())
+	c := cron.New()
 
 	_, err := c.AddFunc(cronExpression, func() {
 		log.Println("Starting scheduled deduplication run...")

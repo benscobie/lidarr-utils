@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/lidarr-utils/cmd"
+	"github.com/benscobie/lidarr-utils/cmd"
 )
 
 func main() {
