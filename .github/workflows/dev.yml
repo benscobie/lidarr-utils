@@ -1,0 +1,56 @@
+name: Dev Release
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: https://code.forgejo.org/actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: https://code.forgejo.org/actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Docker Buildx
+        uses: https://code.forgejo.org/docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          buildkitd-config-inline: |
+            [registry."forgejo.home.arpa"]
+              http = true
+
+      - name: Login to Docker Hub
+        uses: https://github.com/docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to the Forgejo registry
+        uses: https://github.com/docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
+        with:
+          registry: forgejo.home.arpa
+          username: ben
+          password: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
+
+      - name: Run GoReleaser
+        uses: https://github.com/goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552 # v6
+        with:
+          version: v2.15.2
+          args: release --clean --nightly -f .goreleaser-dev.yaml
+        env:
+          GITEA_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          GORELEASER_FORCE_TOKEN: gitea
