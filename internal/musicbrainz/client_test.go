@@ -32,7 +32,7 @@ func TestVACompilationSource_Found(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient()
+	c := NewClient("test")
 	c.baseURL = srv.URL
 
 	title, err := c.VACompilationSource("test-rg-id")
@@ -70,7 +70,7 @@ func TestVACompilationSource_NotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient()
+	c := NewClient("test")
 	c.baseURL = srv.URL
 
 	title, err := c.VACompilationSource("test-rg-id")
@@ -90,7 +90,7 @@ func TestVACompilationSource_NoRelations(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient()
+	c := NewClient("test")
 	c.baseURL = srv.URL
 
 	title, err := c.VACompilationSource("test-rg-id")
@@ -108,7 +108,7 @@ func TestVACompilationSource_APIError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient()
+	c := NewClient("test")
 	c.baseURL = srv.URL
 
 	_, err := c.VACompilationSource("test-rg-id")

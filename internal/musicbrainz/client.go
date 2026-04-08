@@ -10,7 +10,6 @@ import (
 
 const (
 	defaultBaseURL   = "https://musicbrainz.org/ws/2"
-	userAgent        = "LidarrUtils/1.0.0 ( https://github.com/benscobie/lidarr-utils )"
 	VariousArtistsID = "89ad4ac3-39f7-470e-963a-56509c546377"
 )
 
@@ -18,14 +17,16 @@ const (
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
+	userAgent  string
 	mu         sync.Mutex
 	lastReq    time.Time
 }
 
-func NewClient() *Client {
+func NewClient(version string) *Client {
 	return &Client{
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		baseURL:    defaultBaseURL,
+		userAgent:  fmt.Sprintf("LidarrUtils/%s ( https://github.com/benscobie/lidarr-utils )", version),
 	}
 }
 
@@ -76,7 +77,7 @@ func (c *Client) VACompilationSource(releaseGroupID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -92,7 +92,7 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 
 	var mbClient *musicbrainz.Client
 	if cfg.Monitor.ExcludeVAReleases {
-		mbClient = musicbrainz.NewClient()
+		mbClient = musicbrainz.NewClient(version)
 	}
 
 	mon := monitor.NewMonitor(monitor.MonitorOptions{
