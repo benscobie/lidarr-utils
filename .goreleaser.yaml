@@ -1,9 +1,5 @@
 version: 2
 
-gitea_urls:
-  api: http://forgejo.home.arpa/api/v1
-  download: http://forgejo.home.arpa
-
 builds:
   - binary: lidarr-utils
     env:
@@ -52,7 +48,7 @@ changelog:
 
 dockers_v2:
   - images:
-      - "forgejo.home.arpa/ben/lidarr-utils"
+      - "ghcr.io/benscobie/lidarr-utils"
       - "benscobie/lidarr-utils"
     tags:
       - "{{ .Version }}"
