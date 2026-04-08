@@ -50,7 +50,7 @@ jobs:
         uses: https://github.com/goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552 # v6
         with:
           version: v2.15.2
-          args: release --clean --nightly -f .goreleaser-dev.yaml
+          args: release --clean -f .goreleaser-dev.yaml
         env:
           GITEA_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
           GORELEASER_FORCE_TOKEN: gitea
