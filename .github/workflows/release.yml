@@ -51,3 +51,4 @@ jobs:
         run: goreleaser release --clean
         env:
           GITEA_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          GORELEASER_FORCE_TOKEN: gitea
