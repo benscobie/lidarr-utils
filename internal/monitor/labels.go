@@ -1,0 +1,539 @@
+package monitor
+
+import (
+	"errors"
+	"fmt"
+	"log"
+	"strings"
+
+	"github.com/benscobie/lidarr-utils/internal/common"
+	"github.com/benscobie/lidarr-utils/internal/config"
+	"github.com/benscobie/lidarr-utils/internal/lidarr"
+	"github.com/benscobie/lidarr-utils/internal/musicbrainz"
+)
+
+type LabelOptions struct {
+	IDs                      []string
+	AddMissingArtists        bool
+	RootFolder               string
+	Filters                  config.MonitorFilters
+	SkipFullyCoveredReleases bool
+	DryRun                   bool
+}
+
+type PlannedLabelAlbum struct {
+	Album        common.Album
+	Lookup       *lidarr.Album
+	ArtistExists bool
+}
+
+type LabelPlan struct {
+	Selected []PlannedLabelAlbum
+	Stats    LabelStats
+}
+
+type LabelStats struct {
+	LabelsProcessed       int
+	ReleasesDiscovered    int
+	GroupsDiscovered      int
+	GroupsFiltered        int
+	GroupsCoverageSkipped int
+	AlreadyMonitored      int
+	MissingArtistSkipped  int
+	ArtistsAdded          int
+	AlbumsAdded           int
+	AlbumsMonitored       int
+	SearchesSubmitted     int
+	Failures              int
+}
+
+type resolvedLabelCandidate struct {
+	album          common.Album
+	lookup         *lidarr.Album
+	artistExists   bool
+	ownerForeignID string
+}
+
+func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
+	var plan LabelPlan
+	if m.opts.MBClient == nil {
+		return plan, fmt.Errorf("MusicBrainz client is required for label monitoring")
+	}
+
+	groups, groupOrder := m.discoverLabelGroups(opts.IDs, &plan.Stats)
+	plan.Stats.GroupsDiscovered = len(groupOrder)
+	if len(groupOrder) == 0 {
+		return plan, nil
+	}
+
+	cache := NewCatalogCache(m.opts.Client)
+	artists, err := cache.Artists()
+	if err != nil {
+		return plan, fmt.Errorf("failed to get artists: %w", err)
+	}
+	artistsByForeignID := make(map[string]lidarr.Artist, len(artists))
+	artistsByID := make(map[int]lidarr.Artist, len(artists))
+	for _, artist := range artists {
+		artistsByID[artist.ID] = artist
+		if artist.ForeignID != "" {
+			artistsByForeignID[artist.ForeignID] = artist
+		}
+	}
+
+	rawCatalogues := make(map[string][]lidarr.Album)
+	catalogueLoaded := make(map[string]bool)
+	loadCatalogue := func(artist lidarr.Artist) ([]lidarr.Album, error) {
+		if catalogueLoaded[artist.ForeignID] {
+			return rawCatalogues[artist.ForeignID], nil
+		}
+		albums, err := cache.AlbumsForArtist(artist.ID)
+		if err != nil {
+			return nil, err
+		}
+		rawCatalogues[artist.ForeignID] = albums
+		catalogueLoaded[artist.ForeignID] = true
+		return albums, nil
+	}
+
+	resolved := make(map[string]resolvedLabelCandidate)
+	buckets := make(map[string][]string)
+	var bucketOrder []string
+	for _, groupID := range groupOrder {
+		group := groups[groupID]
+		groupAlbum := albumFromLabelGroup(group)
+
+		if common.ShouldExcludeBySecondaryType(
+			groupAlbum,
+			opts.Filters.OfficialOnly,
+			opts.Filters.ExcludeSecondaryTypes,
+		) || (opts.Filters.ExcludeVAReleases && hasDirectVACredit(groupAlbum)) {
+			plan.Stats.GroupsFiltered++
+			continue
+		}
+
+		creditIDs, completeCredits := usableArtistCredits(group)
+		var creditedExisting []lidarr.Artist
+		for _, artistID := range creditIDs {
+			if artist, ok := artistsByForeignID[artistID]; ok {
+				creditedExisting = append(creditedExisting, artist)
+			}
+		}
+		if !opts.AddMissingArtists &&
+			completeCredits &&
+			len(creditIDs) > 0 &&
+			len(creditedExisting) == 0 {
+			plan.Stats.MissingArtistSkipped++
+			continue
+		}
+
+		var (
+			existingAlbum *lidarr.Album
+			owner         lidarr.Artist
+		)
+		for _, artist := range creditedExisting {
+			albums, err := loadCatalogue(artist)
+			if err != nil {
+				plan.Stats.Failures++
+				log.Printf("ERROR: Failed to get albums for %s: %v", artist.ArtistName, err)
+				continue
+			}
+			if album, ok := albumByForeignID(albums, group.ID); ok {
+				found := album
+				existingAlbum = &found
+				owner = ownerArtist(found, artist, artistsByID)
+				break
+			}
+		}
+
+		candidate := resolvedLabelCandidate{album: groupAlbum}
+		if existingAlbum != nil {
+			candidate.album = mergeLookup(groupAlbum, *existingAlbum)
+			candidate.artistExists = true
+			candidate.ownerForeignID = owner.ForeignID
+		} else {
+			lookups, err := cache.LookupAlbum(group.ID)
+			if err != nil {
+				plan.Stats.Failures++
+				log.Printf("ERROR: Failed to look up release group %s: %v", group.ID, err)
+				continue
+			}
+			exact, ok := exactLookup(lookups, group.ID)
+			if !ok {
+				plan.Stats.Failures++
+				log.Printf("ERROR: Lidarr lookup was not exact for release group %s", group.ID)
+				continue
+			}
+
+			owner, candidate.ownerForeignID = lookupOwner(exact, creditIDs, artistsByID)
+			if owner.ID != 0 {
+				candidate.artistExists = true
+				candidate.ownerForeignID = owner.ForeignID
+			} else if _, ok := artistsByForeignID[candidate.ownerForeignID]; ok {
+				candidate.artistExists = true
+			}
+			if candidate.ownerForeignID == "" {
+				plan.Stats.Failures++
+				log.Printf("ERROR: Lidarr lookup did not identify an artist for %s", group.ID)
+				continue
+			}
+			if !candidate.artistExists && !opts.AddMissingArtists {
+				plan.Stats.MissingArtistSkipped++
+				continue
+			}
+
+			candidate.album = mergeLookup(groupAlbum, exact)
+			lookupCopy := exact
+			candidate.lookup = &lookupCopy
+		}
+
+		if candidate.ownerForeignID == "" {
+			plan.Stats.Failures++
+			log.Printf("ERROR: Could not determine catalogue owner for %s", group.ID)
+			continue
+		}
+		if _, exists := buckets[candidate.ownerForeignID]; !exists {
+			bucketOrder = append(bucketOrder, candidate.ownerForeignID)
+		}
+		buckets[candidate.ownerForeignID] = append(
+			buckets[candidate.ownerForeignID],
+			group.ID,
+		)
+		resolved[group.ID] = candidate
+	}
+
+	var vaFilter *VAFilter
+	if opts.Filters.ExcludeVAReleases {
+		vaFilter = NewVAFilter(m.opts.MBClient)
+	}
+	for _, ownerID := range bucketOrder {
+		candidateIDs := buckets[ownerID]
+		candidateSet := make(map[string]struct{}, len(candidateIDs))
+		for _, groupID := range candidateIDs {
+			candidateSet[groupID] = struct{}{}
+		}
+
+		var catalogue []common.Album
+		if owner, ok := artistsByForeignID[ownerID]; ok {
+			raw, err := loadCatalogue(owner)
+			if err != nil {
+				plan.Stats.Failures += len(candidateIDs)
+				log.Printf("ERROR: Failed to get albums for %s: %v", owner.ArtistName, err)
+				continue
+			}
+			catalogue = prepareLidarrCatalogue(
+				owner,
+				raw,
+				cache,
+				opts.Filters,
+				vaFilter,
+			)
+		}
+
+		var synthetic []common.Album
+		for _, groupID := range candidateIDs {
+			candidate := resolved[groupID]
+			if !containsForeignAlbum(catalogue, groupID) {
+				synthetic = append(synthetic, candidate.album)
+			}
+		}
+		markVAAlbums(synthetic, opts.Filters, vaFilter)
+		catalogue = dedupeCatalogue(append(catalogue, synthetic...))
+
+		for _, album := range catalogue {
+			if _, candidate := candidateSet[album.ForeignAlbumID]; candidate && album.Monitored {
+				plan.Stats.AlreadyMonitored++
+			}
+		}
+
+		result := SelectAlbumsToMonitor(catalogue, SelectionOptions{
+			Filters:                  opts.Filters,
+			SkipFullyCoveredReleases: opts.SkipFullyCoveredReleases,
+			CandidateReleaseGroups:   candidateSet,
+		})
+		plan.Stats.GroupsFiltered += len(result.Excluded)
+		plan.Stats.GroupsCoverageSkipped += len(result.Skipped)
+		for _, album := range result.ToMonitor {
+			candidate := resolved[album.ForeignAlbumID]
+			plan.Selected = append(plan.Selected, PlannedLabelAlbum{
+				Album:        album,
+				Lookup:       candidate.lookup,
+				ArtistExists: candidate.artistExists,
+			})
+		}
+	}
+
+	return plan, nil
+}
+
+func (m *Monitor) discoverLabelGroups(
+	labelIDs []string,
+	stats *LabelStats,
+) (map[string]musicbrainz.LabelReleaseGroup, []string) {
+	groups := make(map[string]musicbrainz.LabelReleaseGroup)
+	var groupOrder []string
+	seenLabels := make(map[string]struct{}, len(labelIDs))
+	for _, rawID := range labelIDs {
+		labelID := strings.ToLower(strings.TrimSpace(rawID))
+		if labelID == "" {
+			continue
+		}
+		if _, duplicate := seenLabels[labelID]; duplicate {
+			continue
+		}
+		seenLabels[labelID] = struct{}{}
+
+		result, err := m.opts.MBClient.LabelReleaseGroups(labelID)
+		if err != nil {
+			stats.Failures++
+			if errors.Is(err, musicbrainz.ErrLabelNotFound) {
+				log.Printf("ERROR: MusicBrainz label %s was not found", labelID)
+			} else {
+				log.Printf("ERROR: Failed to browse MusicBrainz label %s: %v", labelID, err)
+			}
+			continue
+		}
+		stats.LabelsProcessed++
+		stats.ReleasesDiscovered += result.ReleasesSeen
+		for _, group := range result.Groups {
+			if group.ID == "" {
+				continue
+			}
+			if existing, ok := groups[group.ID]; ok {
+				groups[group.ID] = mergeDiscoveredGroup(existing, group)
+				continue
+			}
+			groups[group.ID] = group
+			groupOrder = append(groupOrder, group.ID)
+		}
+	}
+	return groups, groupOrder
+}
+
+func albumFromLabelGroup(group musicbrainz.LabelReleaseGroup) common.Album {
+	album := common.Album{
+		Title:          group.Title,
+		AlbumType:      group.PrimaryType,
+		SecondaryTypes: append([]string(nil), group.SecondaryTypes...),
+		ForeignAlbumID: group.ID,
+	}
+	for _, credit := range group.ArtistCredits {
+		if credit.ArtistID != "" {
+			album.ForeignArtistIDs = append(album.ForeignArtistIDs, credit.ArtistID)
+		}
+		if album.ArtistName == "" {
+			album.ArtistName = credit.Name
+		}
+	}
+	for _, format := range group.Formats {
+		album.Releases = append(album.Releases, common.Release{Format: format})
+	}
+	for _, track := range group.Tracks {
+		album.Tracks = append(album.Tracks, common.Track{
+			Title:              track.Title,
+			ForeignTrackID:     track.ID,
+			ForeignRecordingID: track.RecordingID,
+		})
+	}
+	return album
+}
+
+func mergeLookup(album common.Album, lookup lidarr.Album) common.Album {
+	album.ID = lookup.ID
+	if lookup.Title != "" {
+		album.Title = lookup.Title
+	}
+	if lookup.AlbumType != "" {
+		album.AlbumType = lookup.AlbumType
+	}
+	if lookup.SecondaryTypes != nil {
+		album.SecondaryTypes = append([]string(nil), lookup.SecondaryTypes...)
+	}
+	album.ArtistID = lookup.ArtistID
+	album.Releases = lidarr.ConvertReleases(lookup.Releases)
+	album.HasFiles = lookup.Statistics != nil && lookup.Statistics.TrackFileCount > 0
+	album.Monitored = lookup.Monitored
+	if lookup.Artist != nil {
+		if lookup.Artist.ArtistName != "" {
+			album.ArtistName = lookup.Artist.ArtistName
+		}
+		if lookup.Artist.ForeignID != "" &&
+			!containsString(album.ForeignArtistIDs, lookup.Artist.ForeignID) {
+			album.ForeignArtistIDs = append(album.ForeignArtistIDs, lookup.Artist.ForeignID)
+		}
+	}
+	return album
+}
+
+func usableArtistCredits(group musicbrainz.LabelReleaseGroup) ([]string, bool) {
+	seen := make(map[string]struct{})
+	var ids []string
+	complete := len(group.ArtistCredits) > 0
+	for _, credit := range group.ArtistCredits {
+		if credit.ArtistID == "" {
+			complete = false
+			continue
+		}
+		if _, duplicate := seen[credit.ArtistID]; duplicate {
+			continue
+		}
+		seen[credit.ArtistID] = struct{}{}
+		ids = append(ids, credit.ArtistID)
+	}
+	return ids, complete
+}
+
+func albumByForeignID(albums []lidarr.Album, id string) (lidarr.Album, bool) {
+	for _, album := range albums {
+		if album.ForeignAlbumID == id {
+			return album, true
+		}
+	}
+	return lidarr.Album{}, false
+}
+
+func ownerArtist(
+	album lidarr.Album,
+	fallback lidarr.Artist,
+	artistsByID map[int]lidarr.Artist,
+) lidarr.Artist {
+	if artist, ok := artistsByID[album.ArtistID]; ok {
+		return artist
+	}
+	return fallback
+}
+
+func exactLookup(albums []lidarr.Album, id string) (lidarr.Album, bool) {
+	var exact lidarr.Album
+	matches := 0
+	for _, album := range albums {
+		if album.ForeignAlbumID == id {
+			exact = album
+			matches++
+		}
+	}
+	return exact, matches == 1
+}
+
+func lookupOwner(
+	album lidarr.Album,
+	creditIDs []string,
+	artistsByID map[int]lidarr.Artist,
+) (lidarr.Artist, string) {
+	if artist, ok := artistsByID[album.ArtistID]; ok {
+		return artist, artist.ForeignID
+	}
+	if album.Artist != nil {
+		if artist, ok := artistsByID[album.Artist.ID]; ok {
+			return artist, artist.ForeignID
+		}
+		if album.Artist.ForeignID != "" {
+			return lidarr.Artist{}, album.Artist.ForeignID
+		}
+	}
+	if len(creditIDs) == 1 {
+		return lidarr.Artist{}, creditIDs[0]
+	}
+	return lidarr.Artist{}, ""
+}
+
+func containsForeignAlbum(albums []common.Album, id string) bool {
+	for _, album := range albums {
+		if album.ForeignAlbumID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func dedupeCatalogue(albums []common.Album) []common.Album {
+	index := make(map[string]int, len(albums))
+	result := make([]common.Album, 0, len(albums))
+	for _, album := range albums {
+		if album.ForeignAlbumID == "" {
+			result = append(result, album)
+			continue
+		}
+		if existingIndex, ok := index[album.ForeignAlbumID]; ok {
+			if result[existingIndex].ID == 0 && album.ID != 0 {
+				result[existingIndex] = album
+			}
+			continue
+		}
+		index[album.ForeignAlbumID] = len(result)
+		result = append(result, album)
+	}
+	return result
+}
+
+func hasDirectVACredit(album common.Album) bool {
+	for _, artistID := range album.ForeignArtistIDs {
+		if artistID == musicbrainz.VariousArtistsID {
+			return true
+		}
+	}
+	return false
+}
+
+func mergeDiscoveredGroup(
+	existing musicbrainz.LabelReleaseGroup,
+	incoming musicbrainz.LabelReleaseGroup,
+) musicbrainz.LabelReleaseGroup {
+	for _, secondaryType := range incoming.SecondaryTypes {
+		if !containsString(existing.SecondaryTypes, secondaryType) {
+			existing.SecondaryTypes = append(existing.SecondaryTypes, secondaryType)
+		}
+	}
+	artistIDs := make(map[string]struct{}, len(existing.ArtistCredits))
+	for _, credit := range existing.ArtistCredits {
+		artistIDs[credit.ArtistID] = struct{}{}
+	}
+	for _, credit := range incoming.ArtistCredits {
+		if _, exists := artistIDs[credit.ArtistID]; exists {
+			continue
+		}
+		artistIDs[credit.ArtistID] = struct{}{}
+		existing.ArtistCredits = append(existing.ArtistCredits, credit)
+	}
+	for _, format := range incoming.Formats {
+		if !containsString(existing.Formats, format) {
+			existing.Formats = append(existing.Formats, format)
+		}
+	}
+	trackKeys := make(map[string]struct{}, len(existing.Tracks))
+	for _, track := range existing.Tracks {
+		trackKeys[labelTrackKey(track)] = struct{}{}
+	}
+	for _, track := range incoming.Tracks {
+		key := labelTrackKey(track)
+		if _, exists := trackKeys[key]; exists {
+			continue
+		}
+		trackKeys[key] = struct{}{}
+		existing.Tracks = append(existing.Tracks, track)
+	}
+	for _, label := range incoming.SourceLabels {
+		if !containsString(existing.SourceLabels, label) {
+			existing.SourceLabels = append(existing.SourceLabels, label)
+		}
+	}
+	return existing
+}
+
+func labelTrackKey(track musicbrainz.Track) string {
+	if track.RecordingID != "" {
+		return "recording:" + track.RecordingID
+	}
+	if track.ID != "" {
+		return "track:" + track.ID
+	}
+	return "title:" + strings.ToLower(strings.TrimSpace(track.Title))
+}
+
+func containsString(values []string, value string) bool {
+	for _, existing := range values {
+		if existing == value {
+			return true
+		}
+	}
+	return false
+}

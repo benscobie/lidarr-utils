@@ -282,52 +282,30 @@ func (m *Monitor) processArtist(
 	cache *CatalogCache,
 	vaFilter *VAFilter,
 ) (*SelectionResult, error) {
+	albums := prepareLidarrCatalogue(artist, lidarrAlbums, cache, m.opts.Filters, vaFilter)
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{
+		Filters:                  m.opts.Filters,
+		SkipFullyCoveredReleases: m.opts.SkipFullyCoveredReleases,
+	})
+	return &result, nil
+}
+
+func prepareLidarrCatalogue(
+	artist lidarr.Artist,
+	lidarrAlbums []lidarr.Album,
+	cache *CatalogCache,
+	filters config.MonitorFilters,
+	vaFilter *VAFilter,
+) []common.Album {
 	albums := make([]common.Album, len(lidarrAlbums))
 	for i, album := range lidarrAlbums {
 		albums[i] = albumFromLidarr(album, artist)
 	}
+	markVAAlbums(albums, filters, vaFilter)
 
-	standardFilters := m.opts.Filters
-	standardFilters.ExcludeVAReleases = false
-	standardCandidates, _ := partitionAlbumsByFilters(albums, standardFilters)
-	standardIDs := make(map[int]struct{}, len(standardCandidates))
-	for _, album := range standardCandidates {
-		standardIDs[album.ID] = struct{}{}
-	}
-
-	if vaFilter != nil {
-		for i := range albums {
-			if _, ok := standardIDs[albums[i].ID]; !ok {
-				continue
-			}
-			reason, err := vaFilter.ExclusionReason(albums[i])
-			if err != nil {
-				log.Printf(
-					"  Warning: MusicBrainz lookup failed for %s: %v",
-					albums[i].Title,
-					err,
-				)
-				continue
-			}
-			if reason != "" {
-				albums[i].IsVACompilation = true
-				log.Printf(
-					"  Exclude: %s (%s) — %s",
-					albums[i].Title,
-					albums[i].AlbumType,
-					reason,
-				)
-			}
-		}
-	}
-
-	hydrationCandidates, _ := partitionAlbumsByFilters(albums, m.opts.Filters)
-	hydrateIDs := make(map[int]struct{}, len(hydrationCandidates))
-	for _, album := range hydrationCandidates {
-		hydrateIDs[album.ID] = struct{}{}
-	}
 	for i := range albums {
-		if _, ok := hydrateIDs[albums[i].ID]; !ok {
+		kept, _ := partitionAlbumsByFilters(albums[i:i+1], filters)
+		if len(kept) == 0 {
 			continue
 		}
 		tracks, err := cache.Tracks(albums[i].ID)
@@ -337,12 +315,43 @@ func (m *Monitor) processArtist(
 		}
 		albums[i].Tracks = lidarr.ConvertTracks(tracks)
 	}
+	return albums
+}
 
-	result := SelectAlbumsToMonitor(albums, SelectionOptions{
-		Filters:                  m.opts.Filters,
-		SkipFullyCoveredReleases: m.opts.SkipFullyCoveredReleases,
-	})
-	return &result, nil
+func markVAAlbums(
+	albums []common.Album,
+	filters config.MonitorFilters,
+	vaFilter *VAFilter,
+) {
+	if vaFilter == nil {
+		return
+	}
+	standardFilters := filters
+	standardFilters.ExcludeVAReleases = false
+	for i := range albums {
+		kept, _ := partitionAlbumsByFilters(albums[i:i+1], standardFilters)
+		if len(kept) == 0 {
+			continue
+		}
+		reason, err := vaFilter.ExclusionReason(albums[i])
+		if err != nil {
+			log.Printf(
+				"  Warning: MusicBrainz lookup failed for %s: %v",
+				albums[i].Title,
+				err,
+			)
+			continue
+		}
+		if reason != "" {
+			albums[i].IsVACompilation = true
+			log.Printf(
+				"  Exclude: %s (%s) — %s",
+				albums[i].Title,
+				albums[i].AlbumType,
+				reason,
+			)
+		}
+	}
 }
 
 func albumFromLidarr(album lidarr.Album, artist lidarr.Artist) common.Album {
