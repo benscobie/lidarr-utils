@@ -76,17 +76,69 @@ monitor:
       run_on_start: false
 ```
 
-Configuration is also available through `LIDARR_UTILS_` environment variables.
-Nested keys use underscores, for example:
+### Environment variables
+
+The following environment variables are explicitly supported:
+
+#### Lidarr and application
+
+| Environment variable | Configuration key |
+|---|---|
+| `LIDARR_UTILS_LIDARR_URL` | `lidarr.url` |
+| `LIDARR_UTILS_LIDARR_API_KEY` | `lidarr.api_key` |
+| `LIDARR_UTILS_APP_DRY_RUN` | `app.dry_run` |
+| `LIDARR_UTILS_APP_LOG_LEVEL` | `app.log_level` |
+| `LIDARR_UTILS_APP_LOG_FILE` | `app.log_file` |
+| `LIDARR_UTILS_APP_STATE_FILE` | `app.state_file` |
+
+#### Dedupe
+
+| Environment variable | Configuration key |
+|---|---|
+| `LIDARR_UTILS_DEDUPE_ADD_IMPORT_EXCLUSION` | `dedupe.add_import_exclusion` |
+| `LIDARR_UTILS_DEDUPE_SCHEDULE_ENABLED` | `dedupe.schedule.enabled` |
+| `LIDARR_UTILS_DEDUPE_SCHEDULE_CRON` | `dedupe.schedule.cron` |
+| `LIDARR_UTILS_DEDUPE_SCHEDULE_RUN_ON_START` | `dedupe.schedule.run_on_start` |
+
+#### Artist monitoring
+
+| Environment variable | Configuration key |
+|---|---|
+| `LIDARR_UTILS_MONITOR_ARTISTS_OFFICIAL_ONLY` | `monitor.artists.official_only` |
+| `LIDARR_UTILS_MONITOR_ARTISTS_EXCLUDE_SECONDARY_TYPES` | `monitor.artists.exclude_secondary_types` |
+| `LIDARR_UTILS_MONITOR_ARTISTS_EXCLUDE_FORMATS` | `monitor.artists.exclude_formats` |
+| `LIDARR_UTILS_MONITOR_ARTISTS_EXCLUDE_VA_RELEASES` | `monitor.artists.exclude_va_releases` |
+| `LIDARR_UTILS_MONITOR_ARTISTS_SKIP_FULLY_COVERED_RELEASES` | `monitor.artists.skip_fully_covered_releases` |
+| `LIDARR_UTILS_MONITOR_ARTISTS_SCHEDULE_ENABLED` | `monitor.artists.schedule.enabled` |
+| `LIDARR_UTILS_MONITOR_ARTISTS_SCHEDULE_CRON` | `monitor.artists.schedule.cron` |
+| `LIDARR_UTILS_MONITOR_ARTISTS_SCHEDULE_RUN_ON_START` | `monitor.artists.schedule.run_on_start` |
+
+#### Label monitoring
+
+| Environment variable | Configuration key |
+|---|---|
+| `LIDARR_UTILS_MONITOR_LABELS_ADD_MISSING_ARTISTS` | `monitor.labels.add_missing_artists` |
+| `LIDARR_UTILS_MONITOR_LABELS_ROOT_FOLDER` | `monitor.labels.root_folder` |
+| `LIDARR_UTILS_MONITOR_LABELS_OFFICIAL_ONLY` | `monitor.labels.official_only` |
+| `LIDARR_UTILS_MONITOR_LABELS_EXCLUDE_SECONDARY_TYPES` | `monitor.labels.exclude_secondary_types` |
+| `LIDARR_UTILS_MONITOR_LABELS_EXCLUDE_FORMATS` | `monitor.labels.exclude_formats` |
+| `LIDARR_UTILS_MONITOR_LABELS_EXCLUDE_VA_RELEASES` | `monitor.labels.exclude_va_releases` |
+| `LIDARR_UTILS_MONITOR_LABELS_SKIP_FULLY_COVERED_RELEASES` | `monitor.labels.skip_fully_covered_releases` |
+| `LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_ENABLED` | `monitor.labels.schedule.enabled` |
+| `LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_CRON` | `monitor.labels.schedule.cron` |
+| `LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_RUN_ON_START` | `monitor.labels.schedule.run_on_start` |
+
+List values such as excluded secondary types and formats use comma-separated
+values, for example:
 
 ```bash
-export LIDARR_UTILS_LIDARR_URL="http://localhost:8686"
-export LIDARR_UTILS_LIDARR_API_KEY="your-api-key"
-export LIDARR_UTILS_APP_DRY_RUN="true"
-export LIDARR_UTILS_MONITOR_LABELS_ADD_MISSING_ARTISTS="false"
-export LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_ENABLED="true"
-export LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_CRON="0 */6 * * *"
+export LIDARR_UTILS_MONITOR_ARTISTS_EXCLUDE_SECONDARY_TYPES="Live,Compilation"
+export LIDARR_UTILS_MONITOR_LABELS_EXCLUDE_FORMATS="Vinyl,Cassette"
 ```
+
+Label IDs do not have an environment-variable binding. Configure
+`monitor.labels.ids` as a YAML list, or supply label MBIDs as positional
+arguments to `monitor labels`.
 
 ## Usage
 
