@@ -96,13 +96,12 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 	}
 
 	mon := monitor.NewMonitor(monitor.MonitorOptions{
-		Client:                client,
-		DryRun:                cfg.App.DryRun,
-		OfficialOnly:          cfg.Monitor.Artists.OfficialOnly,
-		ExcludeSecondaryTypes: cfg.Monitor.Artists.ExcludeSecondaryTypes,
-		ExcludeFormats:        cfg.Monitor.Artists.ExcludeFormats,
-		MBClient:              mbClient,
-		State:                 st,
+		Client:                   client,
+		DryRun:                   cfg.App.DryRun,
+		Filters:                  cfg.Monitor.Artists.MonitorFilters,
+		SkipFullyCoveredReleases: cfg.Monitor.Artists.SkipFullyCoveredReleases,
+		MBClient:                 mbClient,
+		State:                    st,
 	})
 
 	var artistIDs []int

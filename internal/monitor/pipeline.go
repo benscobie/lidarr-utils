@@ -7,19 +7,19 @@ import (
 	"time"
 
 	"github.com/benscobie/lidarr-utils/internal/common"
+	"github.com/benscobie/lidarr-utils/internal/config"
 	"github.com/benscobie/lidarr-utils/internal/lidarr"
 	"github.com/benscobie/lidarr-utils/internal/musicbrainz"
 	"github.com/benscobie/lidarr-utils/internal/state"
 )
 
 type MonitorOptions struct {
-	Client                *lidarr.Client
-	DryRun                bool
-	OfficialOnly          bool
-	ExcludeSecondaryTypes []string
-	ExcludeFormats        []string
-	MBClient              *musicbrainz.Client
-	State                 *state.State
+	Client                   *lidarr.Client
+	DryRun                   bool
+	Filters                  config.MonitorFilters
+	SkipFullyCoveredReleases bool
+	MBClient                 *musicbrainz.Client
+	State                    *state.State
 }
 
 type Monitor struct {
@@ -92,7 +92,8 @@ func (m *Monitor) Run(artistIDs []int) (*Stats, error) {
 			stats.Excluded++
 			if excluded.IsVACompilation {
 				// Already logged in processArtist with compilation source name
-			} else if len(excluded.Releases) > 0 && common.ShouldExcludeByFormat(excluded, m.opts.ExcludeFormats) {
+			} else if len(excluded.Releases) > 0 &&
+				common.ShouldExcludeByFormat(excluded, m.opts.Filters.ExcludeFormats) {
 				formats := make([]string, 0, len(excluded.Releases))
 				for _, r := range excluded.Releases {
 					formats = append(formats, r.Format)
@@ -201,7 +202,10 @@ func (m *Monitor) processArtist(artistID int, artistName string) (*SelectionResu
 		})
 	}
 
-	result := SelectAlbumsToMonitor(albums, m.opts.OfficialOnly, m.opts.ExcludeSecondaryTypes, m.opts.ExcludeFormats)
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{
+		Filters:                  m.opts.Filters,
+		SkipFullyCoveredReleases: m.opts.SkipFullyCoveredReleases,
+	})
 
 	if m.opts.MBClient != nil {
 		var kept []common.Album
