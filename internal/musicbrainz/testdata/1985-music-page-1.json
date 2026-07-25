@@ -1,0 +1,75 @@
+{
+  "release-count": 3,
+  "release-offset": 0,
+  "releases": [
+    {
+      "id": "release-cd",
+      "release-group": {
+        "id": "bba5fb34-41ca-4200-bc7c-5c28faff64d1",
+        "title": "Example Album",
+        "primary-type": "Album",
+        "secondary-types": [],
+        "artist-credit": [
+          {
+            "artist": {
+              "id": "11111111-1111-1111-1111-111111111111",
+              "name": "Example Artist"
+            }
+          }
+        ]
+      },
+      "media": [
+        {
+          "format": "CD",
+          "tracks": [
+            {
+              "id": "track-1",
+              "title": "First Track",
+              "recording": {
+                "id": "recording-1"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "release-vinyl",
+      "release-group": {
+        "id": "bba5fb34-41ca-4200-bc7c-5c28faff64d1",
+        "title": "Example Album",
+        "primary-type": "Album",
+        "secondary-types": [],
+        "artist-credit": [
+          {
+            "artist": {
+              "id": "11111111-1111-1111-1111-111111111111",
+              "name": "Example Artist"
+            }
+          }
+        ]
+      },
+      "media": [
+        {
+          "format": "Vinyl",
+          "tracks": [
+            {
+              "id": "track-2",
+              "title": "First Track",
+              "recording": {
+                "id": "recording-1"
+              }
+            },
+            {
+              "id": "track-3",
+              "title": "Bonus Track",
+              "recording": {
+                "id": "recording-2"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
