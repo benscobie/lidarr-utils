@@ -53,16 +53,16 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 	}
 
 	if cmd.Flags().Changed("official-only") {
-		cfg.Monitor.OfficialOnly = officialOnly
+		cfg.Monitor.Artists.OfficialOnly = officialOnly
 	}
 	if cmd.Flags().Changed("exclude-secondary-types") {
-		cfg.Monitor.ExcludeSecondaryTypes = excludeSecondaryTypes
+		cfg.Monitor.Artists.ExcludeSecondaryTypes = excludeSecondaryTypes
 	}
 	if cmd.Flags().Changed("exclude-formats") {
-		cfg.Monitor.ExcludeFormats = excludeFormats
+		cfg.Monitor.Artists.ExcludeFormats = excludeFormats
 	}
 	if cmd.Flags().Changed("exclude-va-releases") {
-		cfg.Monitor.ExcludeVAReleases = excludeVAReleases
+		cfg.Monitor.Artists.ExcludeVAReleases = excludeVAReleases
 	}
 
 	logFileHandle, err := setupLoggingFromConfig(cfg)
@@ -91,16 +91,16 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 	log.Println("Successfully connected to Lidarr")
 
 	var mbClient *musicbrainz.Client
-	if cfg.Monitor.ExcludeVAReleases {
+	if cfg.Monitor.Artists.ExcludeVAReleases {
 		mbClient = musicbrainz.NewClient(version)
 	}
 
 	mon := monitor.NewMonitor(monitor.MonitorOptions{
 		Client:                client,
 		DryRun:                cfg.App.DryRun,
-		OfficialOnly:          cfg.Monitor.OfficialOnly,
-		ExcludeSecondaryTypes: cfg.Monitor.ExcludeSecondaryTypes,
-		ExcludeFormats:        cfg.Monitor.ExcludeFormats,
+		OfficialOnly:          cfg.Monitor.Artists.OfficialOnly,
+		ExcludeSecondaryTypes: cfg.Monitor.Artists.ExcludeSecondaryTypes,
+		ExcludeFormats:        cfg.Monitor.Artists.ExcludeFormats,
 		MBClient:              mbClient,
 		State:                 st,
 	})

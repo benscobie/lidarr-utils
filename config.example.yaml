@@ -17,15 +17,36 @@ app:
 dedupe:
   add_import_exclusion: false     # Add removed singles to import exclusion list
 
-# Monitor command settings
-monitor:
-  official_only: false                # Only process albums with no secondary types
-  exclude_secondary_types: []         # Secondary types to exclude (e.g. ["Live", "Compilation"])
-  exclude_formats: []                 # Release formats to exclude (e.g. ["Vinyl", "Cassette"])
-  exclude_va_releases: false          # Exclude singles/EPs from Various Artists compilations (queries MusicBrainz)
+  schedule:
+    enabled: false
+    cron: "0 2 * * *"
+    run_on_start: false
 
-# Scheduling settings (dedupe only)
-schedule:
-  enabled: false                  # Enable scheduled runs
-  cron: "0 2 * * *"              # Run daily at 2 AM (when enabled)
-  run_once: true                  # Run once and exit (overrides schedule when true)
+monitor:
+  artists:
+    skip_fully_covered_releases: true
+    official_only: false
+    exclude_secondary_types: []
+    exclude_formats: []
+    exclude_va_releases: false
+
+    schedule:
+      enabled: false
+      cron: "0 2 * * *"
+      run_on_start: false
+
+  labels:
+    ids:
+      - "a5bfec28-ea8f-426d-ab23-e14aa692c9b5"
+    add_missing_artists: false
+    root_folder: ""
+    skip_fully_covered_releases: true
+    official_only: false
+    exclude_secondary_types: []
+    exclude_formats: []
+    exclude_va_releases: false
+
+    schedule:
+      enabled: false
+      cron: "0 */6 * * *"
+      run_on_start: false
