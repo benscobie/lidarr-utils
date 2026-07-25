@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/benscobie/lidarr-utils/internal/config"
 	"github.com/benscobie/lidarr-utils/internal/dedupe"
 	"github.com/benscobie/lidarr-utils/internal/lidarr"
 )
@@ -35,32 +36,19 @@ func runDedupe(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("add-import-exclusion") {
 		cfg.Dedupe.AddImportExclusion = addImportExclusion
 	}
-	// Setup logging to file
-	logFileHandle, err := setupLoggingFromConfig(cfg)
-	if err != nil {
-		return err
-	}
-	if logFileHandle != nil {
-		defer logFileHandle.Close()
-	}
+	return runWithLoadedConfigLogging(cfg, runDedupeJob)
+}
 
-	// Print configuration
-	cfg.Print()
-	fmt.Println()
-
-	// Create Lidarr client
+func runDedupeJob(cfg *config.Config) error {
 	client := lidarr.NewClient(cfg.Lidarr.URL, cfg.Lidarr.APIKey)
 
-	// Test connection
 	log.Println("Testing connection to Lidarr...")
 	if err := client.TestConnection(); err != nil {
 		return fmt.Errorf("failed to connect to Lidarr: %w", err)
 	}
 	log.Println("Successfully connected to Lidarr")
 
-	// Create deduper
 	deduper := dedupe.NewDeduper(client, cfg.App.DryRun, cfg.Dedupe.AddImportExclusion)
-
 	return runDedupeOnce(deduper)
 }
 
