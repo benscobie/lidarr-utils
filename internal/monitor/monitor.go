@@ -142,7 +142,8 @@ func partitionAlbumsByFilters(
 				album,
 				filters.OfficialOnly,
 				filters.ExcludeSecondaryTypes,
-			) {
+			) ||
+			(filters.ExcludeVAReleases && album.IsVACompilation) {
 			excluded = append(excluded, album)
 			continue
 		}

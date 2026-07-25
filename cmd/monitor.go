@@ -104,27 +104,13 @@ func runMonitor(cmd *cobra.Command, args []string) error {
 		State:                    st,
 	})
 
-	var artistIDs []int
-	if allArtists {
-		artists, err := client.GetArtists()
-		if err != nil {
-			return fmt.Errorf("failed to get artists: %w", err)
-		}
-		for _, a := range artists {
-			artistIDs = append(artistIDs, a.ID)
-		}
-		log.Printf("Processing all %d artists", len(artistIDs))
-	} else {
-		resolved, err := resolveArtistIDs(client, artistIDStrs)
-		if err != nil {
-			return err
-		}
-		artistIDs = resolved
-		log.Printf("Processing %d artist(s)", len(artistIDs))
-	}
-
 	start := time.Now()
-	stats, err := mon.Run(artistIDs)
+	var stats *monitor.Stats
+	if allArtists {
+		stats, err = mon.RunAllArtists()
+	} else {
+		stats, err = mon.RunArtists(artistIDStrs)
+	}
 	if err != nil {
 		return fmt.Errorf("monitor failed: %w", err)
 	}
