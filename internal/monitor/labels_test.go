@@ -241,6 +241,175 @@ func TestPlanLabelsDirectVACreditNeedsNoRelationshipLookup(t *testing.T) {
 	}
 }
 
+func TestRunLabelsDryRunDoesNotAddOrMutate(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.artists = []lidarr.Artist{{ID: 1, ArtistName: "Existing", ForeignID: "existing"}}
+	catalog.albumsByArtist[1] = []lidarr.Album{{
+		ID:             10,
+		ArtistID:       1,
+		Title:          "Existing Album",
+		AlbumType:      "Album",
+		ForeignAlbumID: "rg-existing",
+	}}
+	catalog.lookups["rg-missing"] = []lidarr.Album{
+		lookupAlbum("rg-missing", "Album", "missing"),
+	}
+	client := &fakeMonitorClient{
+		countingCatalogClient: catalog,
+		roots: []lidarr.RootFolder{{
+			Path:                     "/music",
+			Accessible:               true,
+			DefaultQualityProfileID:  2,
+			DefaultMetadataProfileID: 3,
+		}},
+	}
+	mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+		"label": {
+			Groups: []musicbrainz.LabelReleaseGroup{
+				labelGroup("rg-existing", "Album", "existing", "recording-1"),
+				labelGroup("rg-missing", "Album", "missing", "recording-2"),
+			},
+		},
+	}}
+	mon := NewMonitor(MonitorOptions{Client: client, MBClient: mb, DryRun: true})
+
+	stats, err := mon.RunLabels(LabelOptions{
+		IDs:               []string{"label"},
+		AddMissingArtists: true,
+		DryRun:            true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(client.addRequests) != 0 ||
+		len(client.monitorCalls) != 0 ||
+		len(client.searchCalls) != 0 {
+		t.Fatalf("dry run mutated Lidarr: %#v", client)
+	}
+	if stats.ArtistsAdded != 1 ||
+		stats.AlbumsAdded != 1 ||
+		stats.AlbumsMonitored != 2 ||
+		stats.SearchesSubmitted != 2 {
+		t.Fatalf("unexpected dry-run stats: %#v", stats)
+	}
+}
+
+func TestRunLabelsDryRunValidatesAmbiguousRootBeforeProcessing(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	client := &fakeMonitorClient{
+		countingCatalogClient: catalog,
+		roots: []lidarr.RootFolder{
+			{Path: "/one", Accessible: true},
+			{Path: "/two", Accessible: true},
+		},
+	}
+	mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{}}
+	mon := NewMonitor(MonitorOptions{Client: client, MBClient: mb, DryRun: true})
+
+	_, err := mon.RunLabels(LabelOptions{
+		IDs:               []string{"label"},
+		AddMissingArtists: true,
+		DryRun:            true,
+	})
+	if err == nil {
+		t.Fatal("expected ambiguous root validation error")
+	}
+	if len(client.addRequests) != 0 ||
+		len(client.monitorCalls) != 0 ||
+		len(client.searchCalls) != 0 {
+		t.Fatalf("validation failure mutated Lidarr: %#v", client)
+	}
+}
+
+func TestRunLabelsCreatesMissingArtistOnceAndBatchAppliesAlbums(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.lookups["rg-one"] = []lidarr.Album{lookupAlbum("rg-one", "Album", "missing")}
+	catalog.lookups["rg-two"] = []lidarr.Album{lookupAlbum("rg-two", "Album", "missing")}
+	client := &fakeMonitorClient{
+		countingCatalogClient: catalog,
+		roots: []lidarr.RootFolder{{
+			Path:                     "/music",
+			Accessible:               true,
+			DefaultQualityProfileID:  2,
+			DefaultMetadataProfileID: 3,
+			DefaultTags:              []int{4},
+		}},
+		nextAlbumID: 40,
+	}
+	mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+		"label": {
+			Groups: []musicbrainz.LabelReleaseGroup{
+				labelGroup("rg-one", "Album", "missing", "recording-1"),
+				labelGroup("rg-two", "Album", "missing", "recording-2"),
+			},
+		},
+	}}
+	mon := NewMonitor(MonitorOptions{Client: client, MBClient: mb})
+
+	stats, err := mon.RunLabels(LabelOptions{
+		IDs:               []string{"label"},
+		AddMissingArtists: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(client.addRequests) != 2 ||
+		client.addRequests[0].Artist.AddOptions == nil ||
+		client.addRequests[1].Artist.AddOptions != nil {
+		t.Fatalf("unexpected artist creation payloads: %#v", client.addRequests)
+	}
+	if len(client.monitorCalls) != 1 ||
+		len(client.monitorCalls[0]) != 2 ||
+		len(client.searchCalls) != 1 ||
+		len(client.searchCalls[0]) != 2 {
+		t.Fatalf("expected one batch mutation: monitor=%v search=%v", client.monitorCalls, client.searchCalls)
+	}
+	if stats.ArtistsAdded != 1 || stats.AlbumsAdded != 2 || stats.AlbumsMonitored != 2 {
+		t.Fatalf("unexpected stats: %#v", stats)
+	}
+}
+
+func TestRunLabelsExistingArtistPayloadPreservesSettings(t *testing.T) {
+	existing := lidarr.Artist{
+		ID:                7,
+		ArtistName:        "Existing",
+		ForeignID:         "existing",
+		Path:              "/music/Existing",
+		QualityProfileID:  2,
+		MetadataProfileID: 3,
+		Monitored:         true,
+		MonitorNewItems:   "new",
+		Tags:              []int{4},
+	}
+	catalog := newCountingCatalogClient()
+	catalog.artists = []lidarr.Artist{existing}
+	catalog.lookups["rg-new"] = []lidarr.Album{lookupAlbum("rg-new", "Album", "existing")}
+	client := &fakeMonitorClient{countingCatalogClient: catalog, nextAlbumID: 40}
+	mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+		"label": {
+			Groups: []musicbrainz.LabelReleaseGroup{
+				labelGroup("rg-new", "Album", "existing", "recording-1"),
+			},
+		},
+	}}
+	mon := NewMonitor(MonitorOptions{Client: client, MBClient: mb})
+
+	if _, err := mon.RunLabels(LabelOptions{IDs: []string{"label"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.addRequests) != 1 || client.addRequests[0].Artist == nil {
+		t.Fatalf("expected one add request: %#v", client.addRequests)
+	}
+	got := client.addRequests[0].Artist
+	if got.ForeignID != existing.ForeignID ||
+		got.Path != existing.Path ||
+		got.QualityProfileID != existing.QualityProfileID ||
+		got.MetadataProfileID != existing.MetadataProfileID ||
+		got.AddOptions != nil {
+		t.Fatalf("existing artist settings were not preserved: %#v", got)
+	}
+}
+
 func planMissingArtistCoverage(
 	t *testing.T,
 	skipCovered bool,

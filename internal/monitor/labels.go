@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/benscobie/lidarr-utils/internal/common"
 	"github.com/benscobie/lidarr-utils/internal/config"
@@ -183,6 +184,11 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 
 			candidate.album = mergeLookup(groupAlbum, exact)
 			lookupCopy := exact
+			if candidate.artistExists {
+				existingArtist := artistsByForeignID[candidate.ownerForeignID]
+				lookupCopy.Artist = &existingArtist
+				lookupCopy.ArtistID = existingArtist.ID
+			}
 			candidate.lookup = &lookupCopy
 		}
 
@@ -263,6 +269,203 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 	}
 
 	return plan, nil
+}
+
+func (m *Monitor) RunLabels(opts LabelOptions) (*LabelStats, error) {
+	dryRun := opts.DryRun || m.opts.DryRun
+	var root lidarr.RootFolder
+	if opts.AddMissingArtists {
+		roots, err := m.opts.Client.GetRootFolders()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Lidarr root folders: %w", err)
+		}
+		selected, err := selectRootFolder(roots, opts.RootFolder)
+		if err != nil {
+			return nil, err
+		}
+		root = selected
+	}
+
+	plan, err := m.PlanLabels(opts)
+	if err != nil {
+		return nil, err
+	}
+	stats := plan.Stats
+	var albumsToApply []common.Album
+	createdArtists := make(map[string]lidarr.Artist)
+	plannedArtists := make(map[string]struct{})
+	plannedAdds := 0
+
+	for _, planned := range plan.Selected {
+		if planned.Lookup == nil {
+			if planned.Album.ID > 0 {
+				albumsToApply = append(albumsToApply, planned.Album)
+			}
+			continue
+		}
+
+		ownerID := plannedOwnerForeignID(planned)
+		if !planned.ArtistExists && !opts.AddMissingArtists {
+			stats.Failures++
+			log.Printf(
+				"ERROR: Refusing to add %s because its artist is missing",
+				planned.Album.Title,
+			)
+			continue
+		}
+
+		if dryRun {
+			stats.AlbumsAdded++
+			plannedAdds++
+			if !planned.ArtistExists {
+				if _, counted := plannedArtists[ownerID]; !counted {
+					plannedArtists[ownerID] = struct{}{}
+					stats.ArtistsAdded++
+				}
+			}
+			continue
+		}
+
+		request := cloneAlbum(*planned.Lookup)
+		request.Monitored = false
+		request.AddOptions.SearchForNewAlbum = false
+		if planned.ArtistExists {
+			if request.Artist == nil {
+				stats.Failures++
+				log.Printf(
+					"ERROR: Existing artist payload is missing for %s",
+					planned.Album.Title,
+				)
+				continue
+			}
+			request.Artist.AddOptions = nil
+		} else if created, ok := createdArtists[ownerID]; ok {
+			created.AddOptions = nil
+			request.Artist = &created
+		} else {
+			if request.Artist == nil {
+				request.Artist = &lidarr.Artist{
+					ArtistName: planned.Album.ArtistName,
+					ForeignID:  ownerID,
+				}
+			}
+			shapeMissingArtist(request.Artist, root)
+		}
+
+		created, err := m.opts.Client.AddAlbum(request)
+		if err != nil {
+			stats.Failures++
+			log.Printf(
+				"ERROR: Failed to add %s; Lidarr may have created its artist: %v",
+				planned.Album.Title,
+				err,
+			)
+			continue
+		}
+		if created == nil || created.ID <= 0 {
+			stats.Failures++
+			log.Printf("ERROR: Lidarr returned no album ID after adding %s", planned.Album.Title)
+			continue
+		}
+
+		applied := planned.Album
+		applied.ID = created.ID
+		applied.ArtistID = created.ArtistID
+		applied.Monitored = created.Monitored
+		albumsToApply = append(albumsToApply, applied)
+		stats.AlbumsAdded++
+
+		if !planned.ArtistExists {
+			if _, known := createdArtists[ownerID]; !known {
+				artist := *request.Artist
+				if created.Artist != nil {
+					artist = *created.Artist
+				}
+				artist.AddOptions = nil
+				createdArtists[ownerID] = artist
+				stats.ArtistsAdded++
+			}
+		}
+	}
+
+	applyStats, err := applyAlbums(m.opts.Client, m.opts.State, dryRun, albumsToApply)
+	if err != nil {
+		return &stats, err
+	}
+	stats.AlbumsMonitored = applyStats.AlbumsMonitored
+	stats.SearchesSubmitted = applyStats.SearchesSubmitted
+	if dryRun {
+		stats.AlbumsMonitored += plannedAdds
+		stats.SearchesSubmitted += plannedAdds
+	}
+	return &stats, nil
+}
+
+func shapeMissingArtist(artist *lidarr.Artist, root lidarr.RootFolder) {
+	artist.RootFolderPath = root.Path
+	artist.QualityProfileID = root.DefaultQualityProfileID
+	artist.MetadataProfileID = root.DefaultMetadataProfileID
+	artist.Tags = append([]int(nil), root.DefaultTags...)
+	artist.Monitored = false
+	artist.MonitorNewItems = "none"
+	artist.AddOptions = &lidarr.AddArtistOptions{
+		Monitor:                "none",
+		Monitored:              false,
+		SearchForMissingAlbums: false,
+	}
+}
+
+func plannedOwnerForeignID(planned PlannedLabelAlbum) string {
+	if planned.Lookup != nil &&
+		planned.Lookup.Artist != nil &&
+		planned.Lookup.Artist.ForeignID != "" {
+		return planned.Lookup.Artist.ForeignID
+	}
+	if len(planned.Album.ForeignArtistIDs) > 0 {
+		return planned.Album.ForeignArtistIDs[0]
+	}
+	return ""
+}
+
+func cloneAlbum(album lidarr.Album) lidarr.Album {
+	clone := album
+	clone.SecondaryTypes = append([]string(nil), album.SecondaryTypes...)
+	clone.Releases = append([]lidarr.Release(nil), album.Releases...)
+	clone.Tracks = append([]lidarr.Track(nil), album.Tracks...)
+	if album.Artist != nil {
+		artist := *album.Artist
+		artist.Tags = append([]int(nil), album.Artist.Tags...)
+		if album.Artist.AddOptions != nil {
+			addOptions := *album.Artist.AddOptions
+			artist.AddOptions = &addOptions
+		}
+		clone.Artist = &artist
+	}
+	return clone
+}
+
+func (m *Monitor) PrintLabelSummary(stats *LabelStats, duration time.Duration) {
+	fmt.Printf("\n=== LABEL MONITOR SUMMARY ===\n")
+	fmt.Printf("Completed in %v\n", duration)
+	fmt.Printf("Labels processed: %d\n", stats.LabelsProcessed)
+	fmt.Printf("Releases discovered: %d\n", stats.ReleasesDiscovered)
+	fmt.Printf("Release groups discovered: %d\n", stats.GroupsDiscovered)
+	fmt.Printf("Release groups filtered: %d\n", stats.GroupsFiltered)
+	fmt.Printf("Release groups skipped by coverage: %d\n", stats.GroupsCoverageSkipped)
+	fmt.Printf("Already monitored: %d\n", stats.AlreadyMonitored)
+	fmt.Printf("Missing artists skipped: %d\n", stats.MissingArtistSkipped)
+	if m.opts.DryRun {
+		fmt.Printf("Artists that would be added: %d\n", stats.ArtistsAdded)
+		fmt.Printf("Albums that would be added: %d\n", stats.AlbumsAdded)
+		fmt.Printf("Albums that would be monitored: %d\n", stats.AlbumsMonitored)
+		fmt.Printf("Searches that would be submitted: %d\n", stats.SearchesSubmitted)
+	} else {
+		fmt.Printf("Artists added: %d\n", stats.ArtistsAdded)
+		fmt.Printf("Albums added: %d\n", stats.AlbumsAdded)
+		fmt.Printf("Albums monitored: %d\n", stats.AlbumsMonitored)
+		fmt.Printf("Searches submitted: %d\n", stats.SearchesSubmitted)
+	}
+	fmt.Printf("Failures: %d\n\n", stats.Failures)
 }
 
 func (m *Monitor) discoverLabelGroups(

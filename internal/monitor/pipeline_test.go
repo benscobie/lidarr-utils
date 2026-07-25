@@ -10,22 +10,39 @@ import (
 
 type fakeMonitorClient struct {
 	*countingCatalogClient
+	roots        []lidarr.RootFolder
+	rootCalls    int
+	addRequests  []lidarr.Album
+	monitorCalls [][]int
+	searchCalls  [][]int
+	nextAlbumID  int
 }
 
-func (f *fakeMonitorClient) MonitorAlbums(_ []int) error {
+func (f *fakeMonitorClient) MonitorAlbums(ids []int) error {
+	f.monitorCalls = append(f.monitorCalls, append([]int(nil), ids...))
 	return nil
 }
 
-func (f *fakeMonitorClient) SearchAlbum(_ []int) error {
+func (f *fakeMonitorClient) SearchAlbum(ids []int) error {
+	f.searchCalls = append(f.searchCalls, append([]int(nil), ids...))
 	return nil
 }
 
 func (f *fakeMonitorClient) AddAlbum(album lidarr.Album) (*lidarr.Album, error) {
+	f.addRequests = append(f.addRequests, album)
+	f.nextAlbumID++
+	album.ID = f.nextAlbumID
+	if album.Artist != nil {
+		artist := *album.Artist
+		artist.AddOptions = nil
+		album.Artist = &artist
+	}
 	return &album, nil
 }
 
 func (f *fakeMonitorClient) GetRootFolders() ([]lidarr.RootFolder, error) {
-	return nil, nil
+	f.rootCalls++
+	return f.roots, nil
 }
 
 type fakeMonitorMBClient struct {

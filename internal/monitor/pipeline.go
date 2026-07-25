@@ -219,46 +219,12 @@ func (m *Monitor) runArtistCatalogs(catalogs []artistCatalog, cache *CatalogCach
 		allAlbums = append(allAlbums, result.ToMonitor...)
 	}
 
-	var userSkipped []common.Album
-	allAlbums, userSkipped = filterUserUnmonitored(allAlbums, m.opts.State)
-	for _, album := range userSkipped {
-		stats.UserUnmonitored++
-		log.Printf("  Skipping %s - %s — previously unmonitored by user", album.ArtistName, album.Title)
+	applyStats, err := applyAlbums(m.opts.Client, m.opts.State, m.opts.DryRun, allAlbums)
+	if err != nil {
+		return stats, err
 	}
-
-	if len(allAlbums) == 0 {
-		log.Println("No albums to monitor or search")
-		return stats, nil
-	}
-	if m.opts.DryRun {
-		log.Printf("[DRY RUN] Would monitor and search %d albums", len(allAlbums))
-		stats.SearchesSubmitted = len(allAlbums)
-		return stats, nil
-	}
-
-	albumIDs := make([]int, len(allAlbums))
-	for i, album := range allAlbums {
-		albumIDs[i] = album.ID
-	}
-	if err := m.opts.Client.MonitorAlbums(albumIDs); err != nil {
-		return stats, fmt.Errorf("failed to monitor albums: %w", err)
-	}
-	log.Printf("Monitored %d albums", len(albumIDs))
-
-	if m.opts.State != nil {
-		for _, album := range allAlbums {
-			m.opts.State.RecordAlbum(album.ID, album.ArtistName, album.Title)
-		}
-		if err := m.opts.State.Save(); err != nil {
-			log.Printf("WARNING: failed to save state file: %v", err)
-		}
-	}
-
-	if err := m.opts.Client.SearchAlbum(albumIDs); err != nil {
-		return stats, fmt.Errorf("failed to search albums: %w", err)
-	}
-	log.Printf("Submitted search for %d albums", len(albumIDs))
-	stats.SearchesSubmitted = len(albumIDs)
+	stats.UserUnmonitored = applyStats.UserUnmonitored
+	stats.SearchesSubmitted = applyStats.SearchesSubmitted
 	return stats, nil
 }
 
