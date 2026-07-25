@@ -1,10 +1,12 @@
 package lidarr
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -16,15 +18,24 @@ type Client struct {
 }
 
 type Artist struct {
-	ID                int    `json:"id"`
-	ArtistName        string `json:"artistName"`
-	ForeignID         string `json:"foreignArtistId"`
-	Status            string `json:"status"`
-	Monitored         bool   `json:"monitored"`
-	Path              string `json:"path"`
-	QualityProfileID  int    `json:"qualityProfileId"`
-	MetadataProfileID int    `json:"metadataProfileId"`
-	MonitorNewItems   string `json:"monitorNewItems"`
+	ID                int               `json:"id"`
+	ArtistName        string            `json:"artistName"`
+	ForeignID         string            `json:"foreignArtistId"`
+	Status            string            `json:"status"`
+	Monitored         bool              `json:"monitored"`
+	Path              string            `json:"path"`
+	QualityProfileID  int               `json:"qualityProfileId"`
+	MetadataProfileID int               `json:"metadataProfileId"`
+	MonitorNewItems   string            `json:"monitorNewItems"`
+	RootFolderPath    string            `json:"rootFolderPath,omitempty"`
+	Tags              []int             `json:"tags,omitempty"`
+	AddOptions        *AddArtistOptions `json:"addOptions,omitempty"`
+}
+
+type AddArtistOptions struct {
+	Monitor                string `json:"monitor"`
+	Monitored              bool   `json:"monitored"`
+	SearchForMissingAlbums bool   `json:"searchForMissingAlbums"`
 }
 
 type Album struct {
@@ -42,6 +53,21 @@ type Album struct {
 	Statistics     *AlbumStatistics `json:"statistics,omitempty"`
 	Artist         *Artist          `json:"artist,omitempty"`
 	Tracks         []Track          `json:"tracks,omitempty"`
+	AddOptions     AddAlbumOptions  `json:"addOptions"`
+}
+
+type AddAlbumOptions struct {
+	AddType           string `json:"addType,omitempty"`
+	SearchForNewAlbum bool   `json:"searchForNewAlbum"`
+}
+
+type RootFolder struct {
+	ID                       int    `json:"id"`
+	Path                     string `json:"path"`
+	Accessible               bool   `json:"accessible"`
+	DefaultQualityProfileID  int    `json:"defaultQualityProfileId"`
+	DefaultMetadataProfileID int    `json:"defaultMetadataProfileId"`
+	DefaultTags              []int  `json:"defaultTags"`
 }
 
 type Release struct {
@@ -154,6 +180,93 @@ func (c *Client) GetAlbumsByArtist(artistID int) ([]Album, error) {
 	}
 
 	return albums, nil
+}
+
+func (c *Client) GetAlbums() ([]Album, error) {
+	resp, err := c.makeRequest(http.MethodGet, "/api/v1/album", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+	}
+
+	var albums []Album
+	if err := json.NewDecoder(resp.Body).Decode(&albums); err != nil {
+		return nil, err
+	}
+	return albums, nil
+}
+
+func (c *Client) LookupAlbum(releaseGroupID string) ([]Album, error) {
+	query := url.Values{"term": {"lidarr:" + releaseGroupID}}
+	resp, err := c.makeRequest(
+		http.MethodGet,
+		"/api/v1/album/lookup?"+query.Encode(),
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+	}
+
+	var albums []Album
+	if err := json.NewDecoder(resp.Body).Decode(&albums); err != nil {
+		return nil, err
+	}
+	return albums, nil
+}
+
+func (c *Client) AddAlbum(album Album) (*Album, error) {
+	body, err := json.Marshal(album)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.makeRequest(http.MethodPost, "/api/v1/album", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf(
+			"failed to add album: status %d, body: %s",
+			resp.StatusCode,
+			string(responseBody),
+		)
+	}
+
+	var created Album
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		return nil, err
+	}
+	return &created, nil
+}
+
+func (c *Client) GetRootFolders() ([]RootFolder, error) {
+	resp, err := c.makeRequest(http.MethodGet, "/api/v1/rootfolder", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+	}
+
+	var roots []RootFolder
+	if err := json.NewDecoder(resp.Body).Decode(&roots); err != nil {
+		return nil, err
+	}
+	return roots, nil
 }
 
 func (c *Client) GetTracksByAlbum(albumID int) ([]Track, error) {
