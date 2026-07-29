@@ -51,7 +51,7 @@ func applyAlbums(
 	}
 
 	if dryRun {
-		log.Printf("[DRY RUN] Would monitor and search %d albums", len(albums))
+		log.Printf("[DRY RUN] Would monitor and search %d existing albums", len(albums))
 		stats.AlbumsMonitored = len(albums)
 		stats.SearchesSubmitted = len(albums)
 		return stats, nil
