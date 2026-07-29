@@ -136,8 +136,8 @@ func (d *Deduper) findSingleInOtherAlbums(single common.Album, allAlbums []commo
 	}
 
 	// Track which single tracks have been found and where
-	trackMatches := make(map[int][]common.Album)  // track index -> albums where found
-	trackReasons := make(map[int][]string)         // track index -> reasons
+	trackMatches := make(map[int][]common.Album) // track index -> albums where found
+	trackReasons := make(map[int][]string)       // track index -> reasons
 
 	// Check each album to see which single tracks it contains
 	for _, album := range allAlbums {

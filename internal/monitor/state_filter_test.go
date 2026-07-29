@@ -14,9 +14,9 @@ func TestFilterUserUnmonitored_SkipsPreviouslyMonitoredAlbums(t *testing.T) {
 	}}
 
 	candidates := []common.Album{
-		{ID: 1, Title: "Album 1", ArtistName: "Artist", Monitored: false},  // in state + unmonitored = skip
-		{ID: 2, Title: "Album 2", ArtistName: "Artist", Monitored: true},   // in state + still monitored = pass through
-		{ID: 3, Title: "Album 3", ArtistName: "Artist", Monitored: false},  // not in state = keep
+		{ID: 1, Title: "Album 1", ArtistName: "Artist", Monitored: false}, // in state + unmonitored = skip
+		{ID: 2, Title: "Album 2", ArtistName: "Artist", Monitored: true},  // in state + still monitored = pass through
+		{ID: 3, Title: "Album 3", ArtistName: "Artist", Monitored: false}, // not in state = keep
 	}
 
 	kept, skipped := filterUserUnmonitored(candidates, s)
