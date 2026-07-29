@@ -44,9 +44,10 @@ Entry point: `main.go` → `cmd.Execute()`.
   and release-group merging, plus VA relationship lookup.
 - `internal/common/`: API-independent domain types, album classification,
   format/secondary filters, and track matching.
-- `internal/monitor/`: run-scoped catalogue/VA caches, pure release selection,
-  artist orchestration, read-only label planning, safe import payloads, state
-  protection, and shared batch application.
+- `internal/monitor/`: run-scoped catalogue and VA caches, pure release
+  selection, artist orchestration, read-only label planning, shared
+  per-release decision logging, safe import payloads, state protection, and
+  shared batch application.
 - `internal/scheduler/`: serialized FIFO runner with duplicate coalescing and
   graceful shutdown.
 - `internal/dedupe/`: duplicate detection and cleanup.
@@ -56,8 +57,13 @@ Entry point: `main.go` → `cmd.Execute()`.
 
 - API resources with JSON tags stay in `internal/lidarr`; domain types stay in
   `internal/common`.
-- Caches are scoped to one command/scheduled job. Successful empty reads are
-  cached; errors are not.
+- `CatalogCache` is scoped to one command/scheduled job. Successful empty
+  reads are cached; errors are not.
+- MusicBrainz label browsing is refreshed on every run. Duplicate label IDs
+  and release groups are deduplicated within the run rather than persistently
+  cached.
+- `VAFilter` is run-scoped and caches one relationship result per
+  release-group MBID, including returned errors.
 - All-artist mode uses one bulk album snapshot. Specific-artist and label modes
   fetch only relevant distinct artist catalogues.
 - Format and secondary-type filters run before track hydration.
@@ -65,7 +71,13 @@ Entry point: `main.go` → `cmd.Execute()`.
   cached exact release-group MBID lookup.
 - Label candidate membership and coverage providers are separate: non-label
   albums may provide coverage but must never become mutation candidates.
-- `PlanLabels` is read-only. Album/artist creation occurs only after planning.
+- Artist and label monitoring share selected/skipped/excluded/warning
+  formatting. Label output additionally distinguishes existing albums,
+  albums to add, missing artists, and already monitored releases.
+- Coverage explanations identify synthetic label albums by release-group MBID;
+  their numeric Lidarr album IDs are zero until import.
+- `PlanLabels` performs no Lidarr mutations, although it emits decision logs.
+  Album/artist creation occurs only after planning.
 - New albums are added unmonitored with automatic search disabled. Shared
   `applyAlbums` owns state filtering, dry-run behavior, ID deduplication,
   batch monitoring, state persistence, and batch search.
