@@ -160,7 +160,7 @@ func TestSelectAlbumsToMonitor_OfficialOnly(t *testing.T) {
 		{
 			ID: 2, Title: "Live Album", AlbumType: "Album",
 			SecondaryTypes: []string{"Live"},
-			Tracks: []common.Track{{ID: 2, Title: "T2", ForeignRecordingID: "r2"}},
+			Tracks:         []common.Track{{ID: 2, Title: "T2", ForeignRecordingID: "r2"}},
 		},
 	}
 

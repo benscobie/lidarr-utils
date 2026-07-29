@@ -33,10 +33,10 @@ type DedupeConfig struct {
 }
 
 type MonitorConfig struct {
-	OfficialOnly          bool        `mapstructure:"official_only"`
-	ExcludeSecondaryTypes []string    `mapstructure:"exclude_secondary_types"`
-	ExcludeFormats        []string    `mapstructure:"exclude_formats"`
-	ExcludeVAReleases     bool        `mapstructure:"exclude_va_releases"`
+	OfficialOnly          bool     `mapstructure:"official_only"`
+	ExcludeSecondaryTypes []string `mapstructure:"exclude_secondary_types"`
+	ExcludeFormats        []string `mapstructure:"exclude_formats"`
+	ExcludeVAReleases     bool     `mapstructure:"exclude_va_releases"`
 }
 
 type ScheduleConfig struct {
