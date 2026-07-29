@@ -81,21 +81,6 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 		}
 	}
 
-	rawCatalogues := make(map[string][]lidarr.Album)
-	catalogueLoaded := make(map[string]bool)
-	loadCatalogue := func(artist lidarr.Artist) ([]lidarr.Album, error) {
-		if catalogueLoaded[artist.ForeignID] {
-			return rawCatalogues[artist.ForeignID], nil
-		}
-		albums, err := cache.AlbumsForArtist(artist.ID)
-		if err != nil {
-			return nil, err
-		}
-		rawCatalogues[artist.ForeignID] = albums
-		catalogueLoaded[artist.ForeignID] = true
-		return albums, nil
-	}
-
 	resolved := make(map[string]resolvedLabelCandidate)
 	buckets := make(map[string][]string)
 	var bucketOrder []string
@@ -132,7 +117,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			owner         lidarr.Artist
 		)
 		for _, artist := range creditedExisting {
-			albums, err := loadCatalogue(artist)
+			albums, err := cache.AlbumsForArtist(artist.ID)
 			if err != nil {
 				plan.Stats.Failures++
 				log.Printf("ERROR: Failed to get albums for %s: %v", artist.ArtistName, err)
@@ -220,7 +205,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 
 		var catalogue []common.Album
 		if owner, ok := artistsByForeignID[ownerID]; ok {
-			raw, err := loadCatalogue(owner)
+			raw, err := cache.AlbumsForArtist(owner.ID)
 			if err != nil {
 				plan.Stats.Failures += len(candidateIDs)
 				log.Printf("ERROR: Failed to get albums for %s: %v", owner.ArtistName, err)
