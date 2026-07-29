@@ -15,18 +15,22 @@ const (
 
 // Client queries the MusicBrainz API with built-in rate limiting (1 req/sec).
 type Client struct {
-	httpClient *http.Client
-	baseURL    string
-	userAgent  string
-	mu         sync.Mutex
-	lastReq    time.Time
+	httpClient         *http.Client
+	baseURL            string
+	userAgent          string
+	mu                 sync.Mutex
+	lastReq            time.Time
+	minRequestInterval time.Duration
+	sleep              func(time.Duration)
 }
 
 func NewClient(version string) *Client {
 	return &Client{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		baseURL:    defaultBaseURL,
-		userAgent:  fmt.Sprintf("LidarrUtils/%s ( https://github.com/benscobie/lidarr-utils )", version),
+		httpClient:         &http.Client{Timeout: 30 * time.Second},
+		baseURL:            defaultBaseURL,
+		userAgent:          fmt.Sprintf("LidarrUtils/%s ( https://github.com/benscobie/lidarr-utils )", version),
+		minRequestInterval: time.Second,
+		sleep:              time.Sleep,
 	}
 }
 
@@ -58,28 +62,51 @@ func (c *Client) rateLimit() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if elapsed := time.Since(c.lastReq); elapsed < time.Second {
-		time.Sleep(time.Second - elapsed)
+	if elapsed := time.Since(c.lastReq); elapsed < c.minRequestInterval {
+		c.sleep(c.minRequestInterval - elapsed)
 	}
 	c.lastReq = time.Now()
+}
+
+func (c *Client) get(requestURL string) (*http.Response, error) {
+	const maxAttempts = 3
+	backoff := []time.Duration{time.Second, 2 * time.Second}
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		c.rateLimit()
+
+		req, err := http.NewRequest(http.MethodGet, requestURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", c.userAgent)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		retryable := resp.StatusCode == http.StatusTooManyRequests ||
+			resp.StatusCode >= http.StatusInternalServerError
+		if !retryable || attempt == maxAttempts-1 {
+			return resp, nil
+		}
+
+		resp.Body.Close()
+		c.sleep(backoff[attempt])
+	}
+
+	panic("unreachable")
 }
 
 // VACompilationSource checks if a release group has a "single from" relationship
 // to a Various Artists release group. Returns the compilation title if found,
 // or empty string if not.
 func (c *Client) VACompilationSource(releaseGroupID string) (string, error) {
-	c.rateLimit()
-
 	url := fmt.Sprintf("%s/release-group/%s?inc=release-group-rels+artist-credits&fmt=json",
 		c.baseURL, releaseGroupID)
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", c.userAgent)
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.get(url)
 	if err != nil {
 		return "", err
 	}

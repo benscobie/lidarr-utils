@@ -1,10 +1,47 @@
 package monitor
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/benscobie/lidarr-utils/internal/common"
+	"github.com/benscobie/lidarr-utils/internal/config"
 )
+
+func TestSelectAlbumsToMonitor_SyntheticCoverageReasonNamesSource(t *testing.T) {
+	albums := []common.Album{
+		{
+			Title:          "Label EP",
+			AlbumType:      "EP",
+			ForeignAlbumID: "rg-ep",
+			Tracks: []common.Track{{
+				Title:              "Shared Track",
+				ForeignRecordingID: "recording-1",
+			}},
+		},
+		{
+			Title:          "Label Single",
+			AlbumType:      "Single",
+			ForeignAlbumID: "rg-single",
+			Tracks: []common.Track{{
+				Title:              "Shared Track",
+				ForeignRecordingID: "recording-1",
+			}},
+		},
+	}
+
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{
+		SkipFullyCoveredReleases: true,
+	})
+
+	if len(result.Skipped) != 1 {
+		t.Fatalf("expected one covered release, got %#v", result.Skipped)
+	}
+	if !strings.Contains(result.Skipped[0].Reason, "ep 'Label EP'") {
+		t.Fatalf("coverage reason did not name the source EP: %q", result.Skipped[0].Reason)
+	}
+}
 
 func TestSelectAlbumsToMonitor_PrefersAlbumsOverEPs(t *testing.T) {
 	albums := []common.Album{
@@ -25,7 +62,7 @@ func TestSelectAlbumsToMonitor_PrefersAlbumsOverEPs(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil, nil)
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{SkipFullyCoveredReleases: true})
 
 	if len(result.ToMonitor) != 1 {
 		t.Fatalf("expected 1 album to monitor, got %d", len(result.ToMonitor))
@@ -55,7 +92,7 @@ func TestSelectAlbumsToMonitor_PrefersEPsOverSingles(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil, nil)
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{SkipFullyCoveredReleases: true})
 
 	if len(result.ToMonitor) != 1 {
 		t.Fatalf("expected 1 to monitor, got %d", len(result.ToMonitor))
@@ -91,7 +128,7 @@ func TestSelectAlbumsToMonitor_EPWithTracksAcrossMultipleAlbums(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil, nil)
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{SkipFullyCoveredReleases: true})
 
 	if len(result.ToMonitor) != 2 {
 		t.Fatalf("expected 2 to monitor (both albums), got %d", len(result.ToMonitor))
@@ -118,7 +155,7 @@ func TestSelectAlbumsToMonitor_EPWithUniqueTracksIsMonitored(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil, nil)
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{SkipFullyCoveredReleases: true})
 
 	if len(result.ToMonitor) != 2 {
 		t.Fatalf("expected 2 to monitor (album + EP), got %d", len(result.ToMonitor))
@@ -141,7 +178,7 @@ func TestSelectAlbumsToMonitor_SkipsAlreadyMonitored(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil, nil)
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{SkipFullyCoveredReleases: true})
 
 	if len(result.ToMonitor) != 0 {
 		t.Fatalf("expected 0 to monitor (album already monitored), got %d", len(result.ToMonitor))
@@ -164,7 +201,7 @@ func TestSelectAlbumsToMonitor_OfficialOnly(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, true, nil, nil)
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{Filters: config.MonitorFilters{OfficialOnly: true}, SkipFullyCoveredReleases: true})
 
 	if len(result.ToMonitor) != 1 {
 		t.Fatalf("expected 1 to monitor, got %d", len(result.ToMonitor))
@@ -185,7 +222,7 @@ func TestSelectAlbumsToMonitor_AlbumWithNoTracks(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil, nil)
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{SkipFullyCoveredReleases: true})
 
 	if len(result.ToMonitor) != 1 {
 		t.Fatalf("expected 1 to monitor (no tracks = can't prove redundancy), got %d", len(result.ToMonitor))
@@ -212,7 +249,7 @@ func TestSelectAlbumsToMonitor_ExcludeDownloadedAlbum(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil, nil)
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{SkipFullyCoveredReleases: true})
 
 	if len(result.ToMonitor) != 1 {
 		t.Fatalf("expected 1 to monitor (downloaded album excluded), got %d", len(result.ToMonitor))
@@ -232,7 +269,7 @@ func TestSelectAlbumsToMonitor_ExcludeDownloadedEP(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil, nil)
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{SkipFullyCoveredReleases: true})
 
 	if len(result.ToMonitor) != 0 {
 		t.Fatalf("expected 0 to monitor (downloaded EP excluded), got %d", len(result.ToMonitor))
@@ -249,7 +286,7 @@ func TestSelectAlbumsToMonitor_ExcludeDownloadedSingle(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil, nil)
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{SkipFullyCoveredReleases: true})
 
 	if len(result.ToMonitor) != 0 {
 		t.Fatalf("expected 0 to monitor (downloaded single excluded), got %d", len(result.ToMonitor))
@@ -273,7 +310,7 @@ func TestSelectAlbumsToMonitor_DownloadedAlbumTracksStillDedup(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil, nil)
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{SkipFullyCoveredReleases: true})
 
 	// Downloaded album excluded from monitoring, but its tracks should still
 	// cause the EP to be skipped (tracks already covered).
@@ -309,7 +346,7 @@ func TestSelectAlbumsToMonitor_ExcludeVinylOnly(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil, []string{"Vinyl"})
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{Filters: config.MonitorFilters{ExcludeFormats: []string{"Vinyl"}}, SkipFullyCoveredReleases: true})
 
 	if len(result.ToMonitor) != 1 {
 		t.Fatalf("expected 1 to monitor, got %d", len(result.ToMonitor))
@@ -339,7 +376,7 @@ func TestSelectAlbumsToMonitor_VinylAndCDReleasePasses(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil, []string{"Vinyl"})
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{Filters: config.MonitorFilters{ExcludeFormats: []string{"Vinyl"}}, SkipFullyCoveredReleases: true})
 
 	if len(result.ToMonitor) != 1 {
 		t.Fatalf("expected 1 to monitor (has CD release), got %d", len(result.ToMonitor))
@@ -368,7 +405,7 @@ func TestSelectAlbumsToMonitor_FormatFilterBeforeTrackCoverage(t *testing.T) {
 		},
 	}
 
-	result := SelectAlbumsToMonitor(albums, false, nil, []string{"Vinyl"})
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{Filters: config.MonitorFilters{ExcludeFormats: []string{"Vinyl"}}, SkipFullyCoveredReleases: true})
 
 	if len(result.ToMonitor) != 1 {
 		t.Fatalf("expected 1 to monitor, got %d", len(result.ToMonitor))
@@ -379,5 +416,53 @@ func TestSelectAlbumsToMonitor_FormatFilterBeforeTrackCoverage(t *testing.T) {
 	// The EP should be excluded by format, NOT appear in Skipped
 	if len(result.Skipped) != 0 {
 		t.Fatalf("expected 0 skipped (format filter runs before coverage), got %d", len(result.Skipped))
+	}
+}
+
+func TestSelectAlbumsToMonitor_NonCandidateAlbumProvidesCoverage(t *testing.T) {
+	catalog := []common.Album{
+		{
+			ID: 1, ForeignAlbumID: "non-label-album",
+			Title: "Non-label Album", AlbumType: "Album",
+			Tracks: []common.Track{{ForeignRecordingID: "recording-1"}},
+		},
+		{
+			ForeignAlbumID: "label-single",
+			Title:          "Label Single", AlbumType: "Single",
+			Tracks: []common.Track{{ForeignRecordingID: "recording-1"}},
+		},
+	}
+	result := SelectAlbumsToMonitor(catalog, SelectionOptions{
+		SkipFullyCoveredReleases: true,
+		CandidateReleaseGroups:   map[string]struct{}{"label-single": {}},
+	})
+	if len(result.ToMonitor) != 0 || len(result.Skipped) != 1 {
+		t.Fatalf("expected only label single to be skipped: %#v", result)
+	}
+}
+
+func TestSelectAlbumsToMonitor_CoverageDisabledKeepsRedundantCandidate(t *testing.T) {
+	catalog := []common.Album{
+		{
+			ForeignAlbumID: "non-label-album",
+			Title:          "Non-label Album", AlbumType: "Album",
+			Tracks: []common.Track{{ForeignRecordingID: "recording-1"}},
+		},
+		{
+			ForeignAlbumID: "label-single",
+			Title:          "Label Single", AlbumType: "Single",
+			Tracks: []common.Track{{ForeignRecordingID: "recording-1"}},
+		},
+	}
+	result := SelectAlbumsToMonitor(catalog, SelectionOptions{
+		SkipFullyCoveredReleases: false,
+		CandidateReleaseGroups:   map[string]struct{}{"label-single": {}},
+	})
+	var got []string
+	for _, album := range result.ToMonitor {
+		got = append(got, album.ForeignAlbumID)
+	}
+	if !slices.Equal(got, []string{"label-single"}) {
+		t.Fatalf("unexpected candidates: %v", got)
 	}
 }

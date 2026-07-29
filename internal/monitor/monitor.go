@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/benscobie/lidarr-utils/internal/common"
+	"github.com/benscobie/lidarr-utils/internal/config"
 )
 
 type SelectionResult struct {
@@ -19,27 +20,30 @@ type SkippedAlbum struct {
 	Reason string
 }
 
-func SelectAlbumsToMonitor(albums []common.Album, officialOnly bool, excludeSecondaryTypes []string, excludeFormats []string) SelectionResult {
+type SelectionOptions struct {
+	Filters                  config.MonitorFilters
+	SkipFullyCoveredReleases bool
+	CandidateReleaseGroups   map[string]struct{}
+}
+
+func SelectAlbumsToMonitor(albums []common.Album, opts SelectionOptions) SelectionResult {
 	var result SelectionResult
 
-	// Filter by format first
-	var formatFiltered []common.Album
-	for _, album := range albums {
-		if common.ShouldExcludeByFormat(album, excludeFormats) {
+	filtered, excluded := partitionAlbumsByFilters(albums, opts.Filters)
+	for _, album := range excluded {
+		if isCandidate(album, opts.CandidateReleaseGroups) {
 			result.Excluded = append(result.Excluded, album)
-			continue
 		}
-		formatFiltered = append(formatFiltered, album)
 	}
 
-	// Filter by secondary types
-	var filtered []common.Album
-	for _, album := range formatFiltered {
-		if common.ShouldExcludeBySecondaryType(album, officialOnly, excludeSecondaryTypes) {
-			result.Excluded = append(result.Excluded, album)
-			continue
+	if !opts.SkipFullyCoveredReleases {
+		for _, album := range filtered {
+			if isCandidate(album, opts.CandidateReleaseGroups) &&
+				!album.Monitored && !album.HasFiles {
+				result.ToMonitor = append(result.ToMonitor, album)
+			}
 		}
-		filtered = append(filtered, album)
+		return result
 	}
 
 	// Sort into tiers
@@ -62,32 +66,38 @@ func SelectAlbumsToMonitor(albums []common.Album, officialOnly bool, excludeSeco
 
 	// Process albums (always selected)
 	for _, album := range albumTier {
-		if len(album.Tracks) == 0 {
+		candidate := isCandidate(album, opts.CandidateReleaseGroups)
+		if len(album.Tracks) == 0 && candidate {
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("Album '%s' has no track data — monitoring anyway", album.Title))
 		}
 		addTracksToSelected(album.Tracks, selectedTracks)
-		if !album.Monitored && !album.HasFiles {
+		if candidate && !album.Monitored && !album.HasFiles {
 			result.ToMonitor = append(result.ToMonitor, album)
 		}
 	}
 
 	// Process EPs
 	for _, ep := range epTier {
+		candidate := isCandidate(ep, opts.CandidateReleaseGroups)
 		if len(ep.Tracks) == 0 {
-			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("EP '%s' has no track data — monitoring anyway", ep.Title))
-			if !ep.Monitored && !ep.HasFiles {
+			if candidate {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("EP '%s' has no track data — monitoring anyway", ep.Title))
+			}
+			if candidate && !ep.Monitored && !ep.HasFiles {
 				result.ToMonitor = append(result.ToMonitor, ep)
 			}
 			continue
 		}
 		if allTracksCovered(ep.Tracks, selectedTracks, filtered) {
-			reason := buildSkipReason(ep, selectedTracks, filtered)
-			result.Skipped = append(result.Skipped, SkippedAlbum{Album: ep, Reason: reason})
+			if candidate {
+				reason := buildSkipReason(ep, selectedTracks, filtered)
+				result.Skipped = append(result.Skipped, SkippedAlbum{Album: ep, Reason: reason})
+			}
 		} else {
 			addTracksToSelected(ep.Tracks, selectedTracks)
-			if !ep.Monitored && !ep.HasFiles {
+			if candidate && !ep.Monitored && !ep.HasFiles {
 				result.ToMonitor = append(result.ToMonitor, ep)
 			}
 		}
@@ -95,26 +105,59 @@ func SelectAlbumsToMonitor(albums []common.Album, officialOnly bool, excludeSeco
 
 	// Process singles
 	for _, single := range singleTier {
+		candidate := isCandidate(single, opts.CandidateReleaseGroups)
 		if len(single.Tracks) == 0 {
-			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("Single '%s' has no track data — monitoring anyway", single.Title))
-			if !single.Monitored && !single.HasFiles {
+			if candidate {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("Single '%s' has no track data — monitoring anyway", single.Title))
+			}
+			if candidate && !single.Monitored && !single.HasFiles {
 				result.ToMonitor = append(result.ToMonitor, single)
 			}
 			continue
 		}
 		if allTracksCovered(single.Tracks, selectedTracks, filtered) {
-			reason := buildSkipReason(single, selectedTracks, filtered)
-			result.Skipped = append(result.Skipped, SkippedAlbum{Album: single, Reason: reason})
+			if candidate {
+				reason := buildSkipReason(single, selectedTracks, filtered)
+				result.Skipped = append(result.Skipped, SkippedAlbum{Album: single, Reason: reason})
+			}
 		} else {
 			addTracksToSelected(single.Tracks, selectedTracks)
-			if !single.Monitored && !single.HasFiles {
+			if candidate && !single.Monitored && !single.HasFiles {
 				result.ToMonitor = append(result.ToMonitor, single)
 			}
 		}
 	}
 
 	return result
+}
+
+func partitionAlbumsByFilters(
+	albums []common.Album,
+	filters config.MonitorFilters,
+) (kept, excluded []common.Album) {
+	for _, album := range albums {
+		if common.ShouldExcludeByFormat(album, filters.ExcludeFormats) ||
+			common.ShouldExcludeBySecondaryType(
+				album,
+				filters.OfficialOnly,
+				filters.ExcludeSecondaryTypes,
+			) ||
+			(filters.ExcludeVAReleases && album.IsVACompilation) {
+			excluded = append(excluded, album)
+			continue
+		}
+		kept = append(kept, album)
+	}
+	return kept, excluded
+}
+
+func isCandidate(album common.Album, candidates map[string]struct{}) bool {
+	if candidates == nil {
+		return true
+	}
+	_, ok := candidates[album.ForeignAlbumID]
+	return ok
 }
 
 func trackKey(track common.Track) string {
@@ -168,7 +211,7 @@ func buildSkipReason(album common.Album, selected map[string]bool, allAlbums []c
 	var reasons []string
 	for _, track := range album.Tracks {
 		for _, other := range allAlbums {
-			if other.ID == album.ID {
+			if sameAlbum(album, other) {
 				continue
 			}
 			for _, otherTrack := range other.Tracks {
@@ -185,4 +228,11 @@ func buildSkipReason(album common.Album, selected map[string]bool, allAlbums []c
 		return "all tracks found in selected albums"
 	}
 	return strings.Join(reasons, "; ")
+}
+
+func sameAlbum(left, right common.Album) bool {
+	if left.ForeignAlbumID != "" && right.ForeignAlbumID != "" {
+		return left.ForeignAlbumID == right.ForeignAlbumID
+	}
+	return left.ID > 0 && right.ID > 0 && left.ID == right.ID
 }

@@ -4,7 +4,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
+
+func newTestClient() *Client {
+	client := NewClient("test")
+	client.minRequestInterval = 0
+	client.sleep = func(_ time.Duration) {}
+	return client
+}
 
 func TestVACompilationSource_Found(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +40,7 @@ func TestVACompilationSource_Found(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient("test")
+	c := newTestClient()
 	c.baseURL = srv.URL
 
 	title, err := c.VACompilationSource("test-rg-id")
@@ -70,7 +78,7 @@ func TestVACompilationSource_NotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient("test")
+	c := newTestClient()
 	c.baseURL = srv.URL
 
 	title, err := c.VACompilationSource("test-rg-id")
@@ -90,7 +98,7 @@ func TestVACompilationSource_NoRelations(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient("test")
+	c := newTestClient()
 	c.baseURL = srv.URL
 
 	title, err := c.VACompilationSource("test-rg-id")
@@ -108,7 +116,7 @@ func TestVACompilationSource_APIError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient("test")
+	c := newTestClient()
 	c.baseURL = srv.URL
 
 	_, err := c.VACompilationSource("test-rg-id")

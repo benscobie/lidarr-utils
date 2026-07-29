@@ -1,50 +1,94 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for working in this repository.
 
-## Project Overview
+## Project overview
 
-lidarr-utils is a Go CLI tool for managing Lidarr music libraries. Two commands:
-- **dedupe**: Removes duplicate singles already present in albums/EPs
-- **monitor**: Selects optimal releases to monitor using track coverage analysis (Albums > EPs > Singles priority)
+`lidarr-utils` is a Go CLI with four workflows:
 
-Track matching uses MusicBrainz Recording IDs (preferred), Track IDs, then normalized title comparison as fallback.
+- `monitor artist [refs...]`: select useful releases for specific artists, or
+  all Lidarr artists when no refs are supplied.
+- `monitor labels [label-mbids...]`: discover MusicBrainz label release groups,
+  plan against full artist catalogues, import missing albums/artists when
+  configured, then batch monitor/search.
+- `dedupe`: remove downloaded singles already represented by albums or EPs.
+- `schedule`: run enabled artist, label, and dedupe jobs through one serialized queue.
 
-## Build & Test Commands
+Track matching prefers MusicBrainz recording IDs, then track IDs, then
+normalized titles. Release priority is Album > EP > Single.
+
+## Build and test
 
 ```bash
-go build -o lidarr-utils .         # Build binary
-go test ./...                       # Run all tests
-go test ./internal/common -v        # Run tests in a specific package
-go test ./internal/monitor -run TestSelectAlbumsToMonitor  # Run a single test
+go build -o lidarr-utils .
+go test ./...
+go vet ./...
+go test ./internal/monitor -run TestPlanLabels -v
+go test ./internal/scheduler -race -v
 ```
+
+Tests should cover this repository's decisions, mappings, caching, payload
+construction, and orchestration. Do not assert third-party controller/parser
+internals or depend on live Lidarr/MusicBrainz services.
 
 ## Architecture
 
-Entry point: `main.go` -> `cmd.Execute()`
+Entry point: `main.go` → `cmd.Execute()`.
 
-### Package Structure
+- `cmd/`: Cobra commands and reusable one-shot job functions. `monitor` is a
+  parent for `artist` and `labels`; `schedule` invokes the same job functions.
+- `internal/config/`: private Viper instance, nested v2 configuration,
+  defaults, environment bindings, and label UUID normalization.
+- `internal/lidarr/`: API-facing JSON resources and Lidarr API methods.
+- `internal/musicbrainz/`: rate-limited/retrying client, label release paging
+  and release-group merging, plus VA relationship lookup.
+- `internal/common/`: API-independent domain types, album classification,
+  format/secondary filters, and track matching.
+- `internal/monitor/`: run-scoped catalogue and VA caches, pure release
+  selection, artist orchestration, read-only label planning, shared
+  per-release decision logging, safe import payloads, state protection, and
+  shared batch application.
+- `internal/scheduler/`: serialized FIFO runner with duplicate coalescing and
+  graceful shutdown.
+- `internal/dedupe/`: duplicate detection and cleanup.
+- `internal/state/`: JSON record of albums previously monitored by the tool.
 
-- `cmd/` - Cobra CLI commands (root, dedupe, monitor). Config is loaded via Viper in root.go.
-- `internal/config/` - Config struct definitions. Loaded from `config.yaml` or `LIDARR_UTILS_*` env vars.
-- `internal/lidarr/` - HTTP client wrapping Lidarr API v1. Contains Lidarr-specific types (with JSON tags), API methods, and `convert.go` with helpers (`ConvertTracks`, `ConvertReleases`) that map API types to domain types.
-- `internal/common/` - Domain types (`Album`, `Track`, `Release`) and pure-function business logic for album classification and track matching.
-- `internal/dedupe/` - Deduplication: finds singles whose tracks already exist in albums/EPs, then unmonitors and deletes.
-- `internal/monitor/` - Album selection pipeline and orchestration. `pipeline.go` has the `Monitor` struct that drives the pipeline; `monitor.go` has the pure `SelectAlbumsToMonitor` function.
-- `internal/musicbrainz/` - MusicBrainz API client with rate limiting (1 req/sec). Used to detect VA compilation singles via release-group relationships.
-- `internal/state/` - JSON-based state persistence. Tracks which albums were previously monitored so user unmonitoring is respected across runs.
+## Important invariants
 
-### Key Design Patterns
-
-- **Two type systems**: `internal/lidarr/` has API-facing types with JSON tags; `internal/common/` has domain types without. Conversion uses `lidarr.ConvertTracks()`/`ConvertReleases()` in `convert.go`, called from `monitor.processArtist()`.
-- **Pure selection logic**: `SelectAlbumsToMonitor` in `internal/monitor/pipeline.go` is a pure function (no API calls) that takes albums and filter config, returns `SelectionResult` with `ToMonitor`, `Skipped`, and `Excluded` lists.
-- **Album classification helpers**: `common.IsAlbum()`, `common.IsEP()`, `common.IsSingle()` classify by `AlbumType` field. `common.ShouldExcludeByFormat()` and `common.ShouldExcludeBySecondaryType()` handle filtering.
-- **Batch API operations**: Monitor and search use batch Lidarr endpoints (`PUT /api/v1/album/monitor`, `POST /api/v1/command`) rather than per-album calls.
+- API resources with JSON tags stay in `internal/lidarr`; domain types stay in
+  `internal/common`.
+- `CatalogCache` is scoped to one command/scheduled job. Successful empty
+  reads are cached; errors are not.
+- MusicBrainz label browsing is refreshed on every run. Duplicate label IDs
+  and release groups are deduplicated within the run rather than persistently
+  cached.
+- `VAFilter` is run-scoped and caches one relationship result per
+  release-group MBID, including returned errors.
+- All-artist mode uses one bulk album snapshot. Specific-artist and label modes
+  fetch only relevant distinct artist catalogues.
+- Format and secondary-type filters run before track hydration.
+- Existing label release groups bypass album lookup; missing groups use one
+  cached exact release-group MBID lookup.
+- Label candidate membership and coverage providers are separate: non-label
+  albums may provide coverage but must never become mutation candidates.
+- Artist and label monitoring share selected/skipped/excluded/warning
+  formatting. Label output additionally distinguishes existing albums,
+  albums to add, missing artists, and already monitored releases.
+- Coverage explanations identify synthetic label albums by release-group MBID;
+  their numeric Lidarr album IDs are zero until import.
+- `PlanLabels` performs no Lidarr mutations, although it emits decision logs.
+  Album/artist creation occurs only after planning.
+- New albums are added unmonitored with automatic search disabled. Shared
+  `applyAlbums` owns state filtering, dry-run behavior, ID deduplication,
+  batch monitoring, state persistence, and batch search.
+- Dry run performs no Lidarr mutation and no state write.
+- Scheduler jobs never overlap; a same-name queued/running job is coalesced.
 
 ## Configuration
 
-Required: `lidarr.url` and `lidarr.api_key` (via `config.yaml` or env vars `LIDARR_UTILS_LIDARR_URL`, `LIDARR_UTILS_LIDARR_API_KEY`).
+Required values are `lidarr.url` and `lidarr.api_key`. Monitor filters and
+schedules are mode-specific under `monitor.artists` and `monitor.labels`;
+dedupe has its own schedule. `schedule` is the only daemon mode.
 
-Notable options: `monitor.exclude_va_releases` (uses MusicBrainz to filter VA compilation singles), `schedule.*` (cron-based scheduling with `enabled`, `cron`, `run_once`), `app.state_file` (persists monitored album state).
-
-See `config.example.yaml` for all options.
+See `config.example.yaml` and `README.md` for the complete v2 configuration and
+migration notes.
