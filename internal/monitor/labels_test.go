@@ -1,12 +1,145 @@
 package monitor
 
 import (
+	"bytes"
+	"log"
+	"strings"
 	"testing"
 
 	"github.com/benscobie/lidarr-utils/internal/config"
 	"github.com/benscobie/lidarr-utils/internal/lidarr"
 	"github.com/benscobie/lidarr-utils/internal/musicbrainz"
 )
+
+func TestPlanLabelsLogsDetailedCandidateDecisions(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.artists = []lidarr.Artist{{
+		ID:         1,
+		ArtistName: "Existing Artist",
+		ForeignID:  "existing-artist",
+	}}
+	catalog.albumsByArtist[1] = []lidarr.Album{
+		{
+			ID:             10,
+			ArtistID:       1,
+			Title:          "Existing Album",
+			AlbumType:      "Album",
+			ForeignAlbumID: "rg-existing",
+		},
+		{
+			ID:             11,
+			ArtistID:       1,
+			Title:          "Covered Single",
+			AlbumType:      "Single",
+			ForeignAlbumID: "rg-covered",
+		},
+		{
+			ID:             12,
+			ArtistID:       1,
+			Title:          "Already Monitored",
+			AlbumType:      "Album",
+			ForeignAlbumID: "rg-monitored",
+			Monitored:      true,
+		},
+	}
+	catalog.tracks[10] = []lidarr.Track{{
+		Title:              "Shared Track",
+		ForeignRecordingID: "recording-shared",
+	}}
+	catalog.tracks[11] = []lidarr.Track{{
+		Title:              "Shared Track",
+		ForeignRecordingID: "recording-shared",
+	}}
+	catalog.tracks[12] = []lidarr.Track{{
+		Title:              "Monitored Track",
+		ForeignRecordingID: "recording-monitored",
+	}}
+	catalog.lookups["rg-new"] = []lidarr.Album{
+		lookupAlbum("rg-new", "Album", "existing-artist"),
+	}
+	catalog.lookups["rg-missing"] = []lidarr.Album{
+		lookupAlbum("rg-missing", "Album", "missing-artist"),
+	}
+	catalog.lookups["rg-new"][0].Title = "New Album"
+	catalog.lookups["rg-new"][0].Artist.ArtistName = "Existing Artist"
+	catalog.lookups["rg-missing"][0].Title = "Missing Album"
+	catalog.lookups["rg-missing"][0].Artist.ArtistName = "Missing Artist"
+
+	existing := labelGroup("rg-existing", "Album", "existing-artist", "recording-existing")
+	covered := labelGroup("rg-covered", "Single", "existing-artist", "recording-shared")
+	covered.Title = "Covered Single"
+	covered.Tracks[0].Title = "Shared Track"
+	monitored := labelGroup("rg-monitored", "Album", "existing-artist", "recording-monitored")
+	newAlbum := labelGroup("rg-new", "Album", "existing-artist", "recording-new")
+	missingAlbum := labelGroup("rg-missing", "Album", "missing-artist", "recording-missing")
+	live := labelGroup("rg-live", "Album", "existing-artist", "recording-live")
+	live.Title = "Live Release"
+	live.SecondaryTypes = []string{"Live"}
+	live.ArtistCredits[0].Name = "Existing Artist"
+
+	client := &fakeMonitorClient{countingCatalogClient: catalog}
+	mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+		"label": {
+			Groups: []musicbrainz.LabelReleaseGroup{
+				existing,
+				covered,
+				monitored,
+				newAlbum,
+				missingAlbum,
+				live,
+			},
+		},
+	}}
+	mon := NewMonitor(MonitorOptions{Client: client, MBClient: mb})
+
+	output := captureMonitorLogs(t, func() {
+		_, err := mon.PlanLabels(LabelOptions{
+			IDs:                      []string{"label"},
+			AddMissingArtists:        true,
+			SkipFullyCoveredReleases: true,
+			Filters: config.MonitorFilters{
+				ExcludeSecondaryTypes: []string{"Live"},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	for _, expected := range []string{
+		"Exclude: Existing Artist - Live Release (Album) — secondary types: [Live]",
+		"Processing label artist 1/2: Existing Artist",
+		"Selected existing album: Existing Album (Album)",
+		"Selected album to add: New Album (Album)",
+		"Already monitored: Already Monitored (Album)",
+		"Skip Single: Covered Single ('Shared Track' found in album 'Existing Album')",
+		"Processing label artist 2/2: Missing Artist",
+		"Selected album to add: Missing Album (Album) — missing artist will be added",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Errorf("missing log entry %q in:\n%s", expected, output)
+		}
+	}
+}
+
+func captureMonitorLogs(t *testing.T, run func()) string {
+	t.Helper()
+	var output bytes.Buffer
+	previousWriter := log.Writer()
+	previousFlags := log.Flags()
+	previousPrefix := log.Prefix()
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	log.SetPrefix("")
+	defer func() {
+		log.SetOutput(previousWriter)
+		log.SetFlags(previousFlags)
+		log.SetPrefix(previousPrefix)
+	}()
+
+	run()
+	return output.String()
+}
 
 type fakeLabelMBClient struct {
 	results map[string]musicbrainz.LabelBrowseResult

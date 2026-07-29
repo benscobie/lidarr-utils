@@ -92,8 +92,19 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			groupAlbum,
 			opts.Filters.OfficialOnly,
 			opts.Filters.ExcludeSecondaryTypes,
-		) || (opts.Filters.ExcludeVAReleases && hasDirectVACredit(groupAlbum)) {
+		) {
 			plan.Stats.GroupsFiltered++
+			logExcludedAlbum(groupAlbum, opts.Filters, true)
+			continue
+		}
+		if opts.Filters.ExcludeVAReleases && hasDirectVACredit(groupAlbum) {
+			plan.Stats.GroupsFiltered++
+			log.Printf(
+				"  Exclude: %s - %s (%s) — credited directly to Various Artists",
+				groupAlbum.ArtistName,
+				groupAlbum.Title,
+				groupAlbum.AlbumType,
+			)
 			continue
 		}
 
@@ -109,6 +120,12 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			len(creditIDs) > 0 &&
 			len(creditedExisting) == 0 {
 			plan.Stats.MissingArtistSkipped++
+			log.Printf(
+				"  Skip: %s - %s (%s) — artist is not in Lidarr and add_missing_artists is false",
+				groupAlbum.ArtistName,
+				groupAlbum.Title,
+				groupAlbum.AlbumType,
+			)
 			continue
 		}
 
@@ -164,6 +181,12 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			}
 			if !candidate.artistExists && !opts.AddMissingArtists {
 				plan.Stats.MissingArtistSkipped++
+				log.Printf(
+					"  Skip: %s - %s (%s) — artist is not in Lidarr and add_missing_artists is false",
+					candidate.album.ArtistName,
+					candidate.album.Title,
+					candidate.album.AlbumType,
+				)
 				continue
 			}
 
@@ -196,12 +219,30 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 	if opts.Filters.ExcludeVAReleases {
 		vaFilter = NewVAFilter(m.opts.MBClient)
 	}
-	for _, ownerID := range bucketOrder {
+	for ownerIndex, ownerID := range bucketOrder {
 		candidateIDs := buckets[ownerID]
 		candidateSet := make(map[string]struct{}, len(candidateIDs))
 		for _, groupID := range candidateIDs {
 			candidateSet[groupID] = struct{}{}
 		}
+
+		artistName := ownerID
+		if owner, ok := artistsByForeignID[ownerID]; ok && owner.ArtistName != "" {
+			artistName = owner.ArtistName
+		} else {
+			for _, groupID := range candidateIDs {
+				if name := resolved[groupID].album.ArtistName; name != "" {
+					artistName = name
+					break
+				}
+			}
+		}
+		log.Printf(
+			"Processing label artist %d/%d: %s",
+			ownerIndex+1,
+			len(bucketOrder),
+			artistName,
+		)
 
 		var catalogue []common.Album
 		if owner, ok := artistsByForeignID[ownerID]; ok {
@@ -233,6 +274,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 		for _, album := range catalogue {
 			if _, candidate := candidateSet[album.ForeignAlbumID]; candidate && album.Monitored {
 				plan.Stats.AlreadyMonitored++
+				log.Printf("  Already monitored: %s (%s)", album.Title, album.AlbumType)
 			}
 		}
 
@@ -243,8 +285,35 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 		})
 		plan.Stats.GroupsFiltered += len(result.Excluded)
 		plan.Stats.GroupsCoverageSkipped += len(result.Skipped)
+		for _, skipped := range result.Skipped {
+			logSkippedAlbum(skipped)
+		}
+		for _, excluded := range result.Excluded {
+			logExcludedAlbum(excluded, opts.Filters, false)
+		}
+		logSelectionWarnings(result.Warnings)
 		for _, album := range result.ToMonitor {
 			candidate := resolved[album.ForeignAlbumID]
+			switch {
+			case candidate.lookup == nil:
+				log.Printf(
+					"  Selected existing album: %s (%s)",
+					album.Title,
+					album.AlbumType,
+				)
+			case !candidate.artistExists:
+				log.Printf(
+					"  Selected album to add: %s (%s) — missing artist will be added",
+					album.Title,
+					album.AlbumType,
+				)
+			default:
+				log.Printf(
+					"  Selected album to add: %s (%s)",
+					album.Title,
+					album.AlbumType,
+				)
+			}
 			plan.Selected = append(plan.Selected, PlannedLabelAlbum{
 				Album:        album,
 				Lookup:       candidate.lookup,

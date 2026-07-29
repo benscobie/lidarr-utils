@@ -211,7 +211,7 @@ func buildSkipReason(album common.Album, selected map[string]bool, allAlbums []c
 	var reasons []string
 	for _, track := range album.Tracks {
 		for _, other := range allAlbums {
-			if other.ID == album.ID {
+			if sameAlbum(album, other) {
 				continue
 			}
 			for _, otherTrack := range other.Tracks {
@@ -228,4 +228,11 @@ func buildSkipReason(album common.Album, selected map[string]bool, allAlbums []c
 		return "all tracks found in selected albums"
 	}
 	return strings.Join(reasons, "; ")
+}
+
+func sameAlbum(left, right common.Album) bool {
+	if left.ForeignAlbumID != "" && right.ForeignAlbumID != "" {
+		return left.ForeignAlbumID == right.ForeignAlbumID
+	}
+	return left.ID > 0 && right.ID > 0 && left.ID == right.ID
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/benscobie/lidarr-utils/internal/common"
@@ -185,37 +184,13 @@ func (m *Monitor) runArtistCatalogs(catalogs []artistCatalog, cache *CatalogCach
 			} else {
 				stats.SinglesSkipped++
 			}
-			log.Printf("  Skip %s: %s (%s)", skipped.Album.AlbumType, skipped.Album.Title, skipped.Reason)
+			logSkippedAlbum(skipped)
 		}
 		for _, excluded := range result.Excluded {
 			stats.Excluded++
-			if excluded.IsVACompilation {
-				continue
-			}
-			if len(excluded.Releases) > 0 &&
-				common.ShouldExcludeByFormat(excluded, m.opts.Filters.ExcludeFormats) {
-				formats := make([]string, 0, len(excluded.Releases))
-				for _, release := range excluded.Releases {
-					formats = append(formats, release.Format)
-				}
-				log.Printf(
-					"  Skip: %s (%s) — no acceptable format (available: %s)",
-					excluded.Title,
-					excluded.AlbumType,
-					strings.Join(formats, ", "),
-				)
-			} else {
-				log.Printf(
-					"  Exclude: %s (%s) — secondary types: %v",
-					excluded.Title,
-					excluded.AlbumType,
-					excluded.SecondaryTypes,
-				)
-			}
+			logExcludedAlbum(excluded, m.opts.Filters, false)
 		}
-		for _, warning := range result.Warnings {
-			log.Printf("  WARNING: %s", warning)
-		}
+		logSelectionWarnings(result.Warnings)
 		allAlbums = append(allAlbums, result.ToMonitor...)
 	}
 

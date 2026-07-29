@@ -2,11 +2,46 @@ package monitor
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/benscobie/lidarr-utils/internal/common"
 	"github.com/benscobie/lidarr-utils/internal/config"
 )
+
+func TestSelectAlbumsToMonitor_SyntheticCoverageReasonNamesSource(t *testing.T) {
+	albums := []common.Album{
+		{
+			Title:          "Label EP",
+			AlbumType:      "EP",
+			ForeignAlbumID: "rg-ep",
+			Tracks: []common.Track{{
+				Title:              "Shared Track",
+				ForeignRecordingID: "recording-1",
+			}},
+		},
+		{
+			Title:          "Label Single",
+			AlbumType:      "Single",
+			ForeignAlbumID: "rg-single",
+			Tracks: []common.Track{{
+				Title:              "Shared Track",
+				ForeignRecordingID: "recording-1",
+			}},
+		},
+	}
+
+	result := SelectAlbumsToMonitor(albums, SelectionOptions{
+		SkipFullyCoveredReleases: true,
+	})
+
+	if len(result.Skipped) != 1 {
+		t.Fatalf("expected one covered release, got %#v", result.Skipped)
+	}
+	if !strings.Contains(result.Skipped[0].Reason, "ep 'Label EP'") {
+		t.Fatalf("coverage reason did not name the source EP: %q", result.Skipped[0].Reason)
+	}
+}
 
 func TestSelectAlbumsToMonitor_PrefersAlbumsOverEPs(t *testing.T) {
 	albums := []common.Album{
