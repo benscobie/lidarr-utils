@@ -139,8 +139,8 @@ List values such as excluded secondary types and formats use comma-separated
 values, for example:
 
 ```bash
-export LIDARR_UTILS_MONITOR_ARTISTS_EXCLUDE_SECONDARY_TYPES="Live,Compilation"
-export LIDARR_UTILS_MONITOR_LABELS_EXCLUDE_FORMATS="Vinyl,Cassette"
+export LIDARR_UTILS_MONITOR_ARTISTS_SELECTION_EXCLUDE_SECONDARY_TYPES="Live,Compilation"
+export LIDARR_UTILS_MONITOR_LABELS_SELECTION_EXCLUDE_FORMATS="Vinyl,Cassette"
 ```
 
 Label IDs do not have an environment-variable binding. Configure
