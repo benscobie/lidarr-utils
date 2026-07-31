@@ -11,7 +11,7 @@ import (
 type SelectionResult struct {
 	ToMonitor []common.Album
 	Skipped   []SkippedAlbum
-	Excluded  []common.Album
+	Excluded  []ExcludedAlbum
 	Warnings  []string
 }
 
@@ -21,22 +21,21 @@ type SkippedAlbum struct {
 }
 
 type SelectionOptions struct {
-	Filters                  config.MonitorFilters
-	SkipFullyCoveredReleases bool
-	CandidateReleaseGroups   map[string]struct{}
+	Policy                 config.ReleaseSelectionPolicy
+	CandidateReleaseGroups map[string]struct{}
 }
 
 func SelectAlbumsToMonitor(albums []common.Album, opts SelectionOptions) SelectionResult {
 	var result SelectionResult
 
-	filtered, excluded := partitionAlbumsByFilters(albums, opts.Filters)
+	filtered, excluded := partitionAlbumsByPolicy(albums, opts.Policy)
 	for _, album := range excluded {
-		if isCandidate(album, opts.CandidateReleaseGroups) {
+		if isCandidate(album.Album, opts.CandidateReleaseGroups) {
 			result.Excluded = append(result.Excluded, album)
 		}
 	}
 
-	if !opts.SkipFullyCoveredReleases {
+	if !opts.Policy.SkipFullyCoveredReleases {
 		for _, album := range filtered {
 			if isCandidate(album, opts.CandidateReleaseGroups) &&
 				!album.Monitored && !album.HasFiles {
@@ -132,19 +131,13 @@ func SelectAlbumsToMonitor(albums []common.Album, opts SelectionOptions) Selecti
 	return result
 }
 
-func partitionAlbumsByFilters(
+func partitionAlbumsByPolicy(
 	albums []common.Album,
-	filters config.MonitorFilters,
-) (kept, excluded []common.Album) {
+	policy config.ReleaseSelectionPolicy,
+) (kept []common.Album, excluded []ExcludedAlbum) {
 	for _, album := range albums {
-		if common.ShouldExcludeByFormat(album, filters.ExcludeFormats) ||
-			common.ShouldExcludeBySecondaryType(
-				album,
-				filters.OfficialOnly,
-				filters.ExcludeSecondaryTypes,
-			) ||
-			(filters.ExcludeVAReleases && album.IsVACompilation) {
-			excluded = append(excluded, album)
+		if reason := releasePolicyExclusionReason(album, policy); reason != "" {
+			excluded = append(excluded, ExcludedAlbum{Album: album, Reason: reason})
 			continue
 		}
 		kept = append(kept, album)

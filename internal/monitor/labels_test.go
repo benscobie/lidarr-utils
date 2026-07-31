@@ -94,11 +94,14 @@ func TestPlanLabelsLogsDetailedCandidateDecisions(t *testing.T) {
 
 	output := captureMonitorLogs(t, func() {
 		_, err := mon.PlanLabels(LabelOptions{
-			IDs:                      []string{"label"},
-			AddMissingArtists:        true,
-			SkipFullyCoveredReleases: true,
-			Filters: config.MonitorFilters{
-				ExcludeSecondaryTypes: []string{"Live"},
+			IDs:            []string{"label"},
+			MissingArtists: config.MissingArtistsConfig{Enabled: true},
+			Policy: config.ReleaseSelectionPolicy{
+				IncludeSecondaryTypes:    true,
+				ExcludeSecondaryTypes:    []string{"Live"},
+				VariousArtists:           config.VariousArtistsInclude,
+				CompilationSingles:       config.CompilationSinglesInclude,
+				SkipFullyCoveredReleases: true,
 			},
 		})
 		if err != nil {
@@ -107,7 +110,7 @@ func TestPlanLabelsLogsDetailedCandidateDecisions(t *testing.T) {
 	})
 
 	for _, expected := range []string{
-		"Exclude: Existing Artist - Live Release (Album) — secondary types: [Live]",
+		`Exclude: Existing Artist - Live Release (Album) — excluded secondary type "Live"`,
 		"Processing label artist 1/2: Existing Artist",
 		"Selected existing album: Existing Album (Album)",
 		"Selected album to add: New Album (Album)",
@@ -197,7 +200,7 @@ func TestPlanLabelsUsesNonLabelCatalogueForCoverage(t *testing.T) {
 	}}
 
 	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(
-		LabelOptions{IDs: []string{"label"}, SkipFullyCoveredReleases: true},
+		LabelOptions{IDs: []string{"label"}, Policy: testSelectionPolicy(true)},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -246,7 +249,7 @@ func TestPlanLabelsDeduplicatesRemoteWork(t *testing.T) {
 	}}
 
 	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(
-		LabelOptions{IDs: []string{"one", "two", "one"}, AddMissingArtists: true},
+		LabelOptions{IDs: []string{"one", "two", "one"}, MissingArtists: config.MissingArtistsConfig{Enabled: true}},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -277,7 +280,7 @@ func TestPlanLabelsInjectsMissingAlbumIntoExistingArtistCoverage(t *testing.T) {
 	}}
 
 	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(
-		LabelOptions{IDs: []string{"label"}, SkipFullyCoveredReleases: true},
+		LabelOptions{IDs: []string{"label"}, Policy: testSelectionPolicy(true)},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -329,7 +332,7 @@ func TestPlanLabelsSkipsAbsentArtistsBeforeLookupWhenAddingDisabled(t *testing.T
 	}}
 
 	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(
-		LabelOptions{IDs: []string{"label"}, AddMissingArtists: false},
+		LabelOptions{IDs: []string{"label"}, MissingArtists: config.MissingArtistsConfig{Enabled: false}},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -359,10 +362,12 @@ func TestPlanLabelsDirectVACreditNeedsNoRelationshipLookup(t *testing.T) {
 
 	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(
 		LabelOptions{
-			IDs:               []string{"label"},
-			AddMissingArtists: true,
-			Filters: config.MonitorFilters{
-				ExcludeVAReleases: true,
+			IDs:            []string{"label"},
+			MissingArtists: config.MissingArtistsConfig{Enabled: true},
+			Policy: config.ReleaseSelectionPolicy{
+				IncludeSecondaryTypes: true,
+				VariousArtists:        config.VariousArtistsExclude,
+				CompilationSingles:    config.CompilationSinglesInclude,
 			},
 		},
 	)
@@ -407,9 +412,9 @@ func TestRunLabelsDryRunDoesNotAddOrMutate(t *testing.T) {
 	mon := NewMonitor(MonitorOptions{Client: client, MBClient: mb, DryRun: true})
 
 	stats, err := mon.RunLabels(LabelOptions{
-		IDs:               []string{"label"},
-		AddMissingArtists: true,
-		DryRun:            true,
+		IDs:            []string{"label"},
+		MissingArtists: config.MissingArtistsConfig{Enabled: true},
+		DryRun:         true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -440,9 +445,9 @@ func TestRunLabelsDryRunValidatesAmbiguousRootBeforeProcessing(t *testing.T) {
 	mon := NewMonitor(MonitorOptions{Client: client, MBClient: mb, DryRun: true})
 
 	_, err := mon.RunLabels(LabelOptions{
-		IDs:               []string{"label"},
-		AddMissingArtists: true,
-		DryRun:            true,
+		IDs:            []string{"label"},
+		MissingArtists: config.MissingArtistsConfig{Enabled: true},
+		DryRun:         true,
 	})
 	if err == nil {
 		t.Fatal("expected ambiguous root validation error")
@@ -480,8 +485,8 @@ func TestRunLabelsCreatesMissingArtistOnceAndBatchAppliesAlbums(t *testing.T) {
 	mon := NewMonitor(MonitorOptions{Client: client, MBClient: mb})
 
 	stats, err := mon.RunLabels(LabelOptions{
-		IDs:               []string{"label"},
-		AddMissingArtists: true,
+		IDs:            []string{"label"},
+		MissingArtists: config.MissingArtistsConfig{Enabled: true},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -565,9 +570,9 @@ func planMissingArtistCoverage(
 	}}
 	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(
 		LabelOptions{
-			IDs:                      []string{"label"},
-			AddMissingArtists:        true,
-			SkipFullyCoveredReleases: skipCovered,
+			IDs:            []string{"label"},
+			MissingArtists: config.MissingArtistsConfig{Enabled: true},
+			Policy:         testSelectionPolicy(skipCovered),
 		},
 	)
 	if err != nil {

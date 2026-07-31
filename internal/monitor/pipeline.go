@@ -27,12 +27,11 @@ type musicBrainzClient interface {
 }
 
 type MonitorOptions struct {
-	Client                   lidarrClient
-	DryRun                   bool
-	Filters                  config.MonitorFilters
-	SkipFullyCoveredReleases bool
-	MBClient                 musicBrainzClient
-	State                    *state.State
+	Client   lidarrClient
+	DryRun   bool
+	Policy   config.ReleaseSelectionPolicy
+	MBClient musicBrainzClient
+	State    *state.State
 }
 
 type Monitor struct {
@@ -147,7 +146,7 @@ func (m *Monitor) runArtistCatalogs(catalogs []artistCatalog, cache *CatalogCach
 	stats := &Stats{}
 	var allAlbums []common.Album
 	var vaFilter *VAFilter
-	if m.opts.Filters.ExcludeVAReleases {
+	if m.opts.Policy.CompilationSingles == config.CompilationSinglesExclude {
 		vaFilter = NewVAFilter(m.opts.MBClient)
 	}
 
@@ -188,7 +187,7 @@ func (m *Monitor) runArtistCatalogs(catalogs []artistCatalog, cache *CatalogCach
 		}
 		for _, excluded := range result.Excluded {
 			stats.Excluded++
-			logExcludedAlbum(excluded, m.opts.Filters, false)
+			logExcludedAlbum(excluded, false)
 		}
 		logSelectionWarnings(result.Warnings)
 		allAlbums = append(allAlbums, result.ToMonitor...)
@@ -223,10 +222,9 @@ func (m *Monitor) processArtist(
 	cache *CatalogCache,
 	vaFilter *VAFilter,
 ) (*SelectionResult, error) {
-	albums := prepareLidarrCatalogue(artist, lidarrAlbums, cache, m.opts.Filters, vaFilter)
+	albums := prepareLidarrCatalogue(artist, lidarrAlbums, cache, m.opts.Policy, vaFilter)
 	result := SelectAlbumsToMonitor(albums, SelectionOptions{
-		Filters:                  m.opts.Filters,
-		SkipFullyCoveredReleases: m.opts.SkipFullyCoveredReleases,
+		Policy: m.opts.Policy,
 	})
 	return &result, nil
 }
@@ -235,17 +233,17 @@ func prepareLidarrCatalogue(
 	artist lidarr.Artist,
 	lidarrAlbums []lidarr.Album,
 	cache *CatalogCache,
-	filters config.MonitorFilters,
+	policy config.ReleaseSelectionPolicy,
 	vaFilter *VAFilter,
 ) []common.Album {
 	albums := make([]common.Album, len(lidarrAlbums))
 	for i, album := range lidarrAlbums {
 		albums[i] = albumFromLidarr(album, artist)
 	}
-	markVAAlbums(albums, filters, vaFilter)
+	markCompilationSingles(albums, policy, vaFilter)
 
 	for i := range albums {
-		kept, _ := partitionAlbumsByFilters(albums[i:i+1], filters)
+		kept, _ := partitionAlbumsByPolicy(albums[i:i+1], policy)
 		if len(kept) == 0 {
 			continue
 		}
@@ -259,18 +257,21 @@ func prepareLidarrCatalogue(
 	return albums
 }
 
-func markVAAlbums(
+func markCompilationSingles(
 	albums []common.Album,
-	filters config.MonitorFilters,
+	policy config.ReleaseSelectionPolicy,
 	vaFilter *VAFilter,
 ) {
 	if vaFilter == nil {
 		return
 	}
-	standardFilters := filters
-	standardFilters.ExcludeVAReleases = false
+	standardPolicy := policy
+	standardPolicy.CompilationSingles = config.CompilationSinglesInclude
 	for i := range albums {
-		kept, _ := partitionAlbumsByFilters(albums[i:i+1], standardFilters)
+		if albums[i].IsVariousArtists {
+			continue
+		}
+		kept, _ := partitionAlbumsByPolicy(albums[i:i+1], standardPolicy)
 		if len(kept) == 0 {
 			continue
 		}
@@ -284,13 +285,7 @@ func markVAAlbums(
 			continue
 		}
 		if reason != "" {
-			albums[i].IsVACompilation = true
-			log.Printf(
-				"  Exclude: %s (%s) — %s",
-				albums[i].Title,
-				albums[i].AlbumType,
-				reason,
-			)
+			albums[i].CompilationSingleSource = reason
 		}
 	}
 }
@@ -305,6 +300,7 @@ func albumFromLidarr(album lidarr.Album, artist lidarr.Artist) common.Album {
 		ArtistName:       artist.ArtistName,
 		ForeignArtistIDs: []string{artist.ForeignID},
 		ForeignAlbumID:   album.ForeignAlbumID,
+		IsVariousArtists: artist.ForeignID == musicbrainz.VariousArtistsID,
 		Releases:         lidarr.ConvertReleases(album.Releases),
 		HasFiles:         album.Statistics != nil && album.Statistics.TrackFileCount > 0,
 		Monitored:        album.Monitored,

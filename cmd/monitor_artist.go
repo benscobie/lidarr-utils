@@ -33,16 +33,15 @@ func runArtistJob(cfg *config.Config, artistRefs []string) error {
 	}
 
 	var mbClient *musicbrainz.Client
-	if cfg.Monitor.Artists.ExcludeVAReleases {
+	if cfg.Monitor.Artists.Selection.CompilationSingles == config.CompilationSinglesExclude {
 		mbClient = musicbrainz.NewClient(version)
 	}
 	mon := monitor.NewMonitor(monitor.MonitorOptions{
-		Client:                   client,
-		DryRun:                   cfg.App.DryRun,
-		Filters:                  cfg.Monitor.Artists.MonitorFilters,
-		SkipFullyCoveredReleases: cfg.Monitor.Artists.SkipFullyCoveredReleases,
-		MBClient:                 mbClient,
-		State:                    st,
+		Client:   client,
+		DryRun:   cfg.App.DryRun,
+		Policy:   cfg.Monitor.Artists.Selection,
+		MBClient: mbClient,
+		State:    st,
 	})
 
 	start := time.Now()

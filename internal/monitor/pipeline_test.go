@@ -126,8 +126,11 @@ func TestMonitorSkipsTrackFetchForFilteredAlbum(t *testing.T) {
 	mon := NewMonitor(MonitorOptions{
 		Client: client,
 		DryRun: true,
-		Filters: config.MonitorFilters{
-			ExcludeFormats: []string{"Vinyl"},
+		Policy: config.ReleaseSelectionPolicy{
+			IncludeSecondaryTypes: true,
+			ExcludeFormats:        []string{"Vinyl"},
+			VariousArtists:        config.VariousArtistsInclude,
+			CompilationSingles:    config.CompilationSinglesInclude,
 		},
 	})
 

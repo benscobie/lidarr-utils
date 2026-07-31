@@ -58,12 +58,10 @@ func runLabelJob(cfg *config.Config, labelArgs []string) error {
 		State:    st,
 	})
 	options := monitor.LabelOptions{
-		IDs:                      labelIDs,
-		AddMissingArtists:        cfg.Monitor.Labels.AddMissingArtists,
-		RootFolder:               cfg.Monitor.Labels.RootFolder,
-		Filters:                  cfg.Monitor.Labels.MonitorFilters,
-		SkipFullyCoveredReleases: cfg.Monitor.Labels.SkipFullyCoveredReleases,
-		DryRun:                   cfg.App.DryRun,
+		IDs:            labelIDs,
+		MissingArtists: cfg.Monitor.Labels.MissingArtists,
+		Policy:         cfg.Monitor.Labels.Selection,
+		DryRun:         cfg.App.DryRun,
 	}
 
 	start := time.Now()
