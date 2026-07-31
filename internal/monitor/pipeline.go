@@ -39,16 +39,19 @@ type Monitor struct {
 }
 
 type Stats struct {
-	ArtistsProcessed  int
-	AlbumsSelected    int
-	EPsSelected       int
-	SinglesSelected   int
-	EPsSkipped        int
-	SinglesSkipped    int
-	Excluded          int
-	UserUnmonitored   int
-	SearchesSubmitted int
-	Warnings          int
+	ArtistsProcessed      int
+	AlbumsSelected        int
+	EPsSelected           int
+	SinglesSelected       int
+	EPsSkipped            int
+	SinglesSkipped        int
+	Excluded              int
+	UserUnmonitored       int
+	SearchesSubmitted     int
+	Warnings              int
+	RelationshipChecks    int
+	RelationshipCacheHits int
+	RelationshipFailures  int
 }
 
 func NewMonitor(opts MonitorOptions) *Monitor {
@@ -145,9 +148,9 @@ func resolveArtists(artists []lidarr.Artist, refs []string) ([]lidarr.Artist, er
 func (m *Monitor) runArtistCatalogs(catalogs []artistCatalog, cache *CatalogCache) (*Stats, error) {
 	stats := &Stats{}
 	var allAlbums []common.Album
-	var vaFilter *VAFilter
+	var classifier *CompilationSingleClassifier
 	if m.opts.Policy.CompilationSingles == config.CompilationSinglesExclude {
-		vaFilter = NewVAFilter(m.opts.MBClient)
+		classifier = NewCompilationSingleClassifier(m.opts.MBClient)
 	}
 
 	for i, catalog := range catalogs {
@@ -158,7 +161,7 @@ func (m *Monitor) runArtistCatalogs(catalogs []artistCatalog, cache *CatalogCach
 			catalog.artist.ArtistName,
 		)
 
-		result, err := m.processArtist(catalog.artist, catalog.albums, cache, vaFilter)
+		result, err := m.processArtist(catalog.artist, catalog.albums, cache, classifier)
 		if err != nil {
 			log.Printf("ERROR: Failed to process artist %s: %v", catalog.artist.ArtistName, err)
 			continue
@@ -192,6 +195,12 @@ func (m *Monitor) runArtistCatalogs(catalogs []artistCatalog, cache *CatalogCach
 		logSelectionWarnings(result.Warnings)
 		allAlbums = append(allAlbums, result.ToMonitor...)
 	}
+	if classifier != nil {
+		classifierStats := classifier.Stats()
+		stats.RelationshipChecks = classifierStats.Checks
+		stats.RelationshipCacheHits = classifierStats.CacheHits
+		stats.RelationshipFailures = classifierStats.Failures
+	}
 
 	applyStats, err := applyAlbums(m.opts.Client, m.opts.State, m.opts.DryRun, allAlbums)
 	if err != nil {
@@ -220,12 +229,19 @@ func (m *Monitor) processArtist(
 	artist lidarr.Artist,
 	lidarrAlbums []lidarr.Album,
 	cache *CatalogCache,
-	vaFilter *VAFilter,
+	classifier *CompilationSingleClassifier,
 ) (*SelectionResult, error) {
-	albums := prepareLidarrCatalogue(artist, lidarrAlbums, cache, m.opts.Policy, vaFilter)
+	albums, warnings := prepareLidarrCatalogue(
+		artist,
+		lidarrAlbums,
+		cache,
+		m.opts.Policy,
+		classifier,
+	)
 	result := SelectAlbumsToMonitor(albums, SelectionOptions{
 		Policy: m.opts.Policy,
 	})
+	result.Warnings = append(warnings, result.Warnings...)
 	return &result, nil
 }
 
@@ -234,60 +250,66 @@ func prepareLidarrCatalogue(
 	lidarrAlbums []lidarr.Album,
 	cache *CatalogCache,
 	policy config.ReleaseSelectionPolicy,
-	vaFilter *VAFilter,
-) []common.Album {
+	classifier *CompilationSingleClassifier,
+) ([]common.Album, []string) {
 	albums := make([]common.Album, len(lidarrAlbums))
+	var warnings []string
 	for i, album := range lidarrAlbums {
-		albums[i] = albumFromLidarr(album, artist)
+		prepared, albumWarnings := prepareAlbumForSelection(
+			albumFromLidarr(album, artist),
+			policy,
+			classifier,
+			func() ([]common.Track, error) {
+				tracks, err := cache.Tracks(album.ID)
+				return lidarr.ConvertTracks(tracks), err
+			},
+		)
+		albums[i] = prepared
+		warnings = append(warnings, albumWarnings...)
 	}
-	markCompilationSingles(albums, policy, vaFilter)
-
-	for i := range albums {
-		kept, _ := partitionAlbumsByPolicy(albums[i:i+1], policy)
-		if len(kept) == 0 {
-			continue
-		}
-		tracks, err := cache.Tracks(albums[i].ID)
-		if err != nil {
-			log.Printf("Warning: failed to get tracks for album %s: %v", albums[i].Title, err)
-			continue
-		}
-		albums[i].Tracks = lidarr.ConvertTracks(tracks)
-	}
-	return albums
+	return albums, warnings
 }
 
-func markCompilationSingles(
-	albums []common.Album,
+type albumTrackLoader func() ([]common.Track, error)
+
+func prepareAlbumForSelection(
+	album common.Album,
 	policy config.ReleaseSelectionPolicy,
-	vaFilter *VAFilter,
-) {
-	if vaFilter == nil {
-		return
+	classifier *CompilationSingleClassifier,
+	loadTracks albumTrackLoader,
+) (common.Album, []string) {
+	if reason := releasePolicyExclusionReason(album, policy); reason != "" {
+		return album, nil
 	}
-	standardPolicy := policy
-	standardPolicy.CompilationSingles = config.CompilationSinglesInclude
-	for i := range albums {
-		if albums[i].IsVariousArtists {
-			continue
-		}
-		kept, _ := partitionAlbumsByPolicy(albums[i:i+1], standardPolicy)
-		if len(kept) == 0 {
-			continue
-		}
-		reason, err := vaFilter.ExclusionReason(albums[i])
-		if err != nil {
-			log.Printf(
-				"  Warning: MusicBrainz lookup failed for %s: %v",
-				albums[i].Title,
-				err,
-			)
-			continue
-		}
-		if reason != "" {
-			albums[i].CompilationSingleSource = reason
+	var warnings []string
+	if classifier != nil && (common.IsEP(album) || common.IsSingle(album)) {
+		result := classifier.Classify(album)
+		if result.Err != nil {
+			if !result.CacheHit {
+				warnings = append(warnings, fmt.Sprintf(
+					"MusicBrainz compilation-single lookup failed for %s: %v",
+					album.Title,
+					result.Err,
+				))
+			}
+		} else {
+			album.CompilationSingleSource = result.Source
 		}
 	}
+	if reason := releasePolicyExclusionReason(album, policy); reason != "" {
+		return album, warnings
+	}
+	tracks, err := loadTracks()
+	if err != nil {
+		warnings = append(warnings, fmt.Sprintf(
+			"failed to get tracks for album %s: %v",
+			album.Title,
+			err,
+		))
+		return album, warnings
+	}
+	album.Tracks = tracks
+	return album, warnings
 }
 
 func albumFromLidarr(album lidarr.Album, artist lidarr.Artist) common.Album {
@@ -317,6 +339,15 @@ func (m *Monitor) PrintSummary(stats *Stats, duration time.Duration) {
 	fmt.Printf("EPs skipped: %d\n", stats.EPsSkipped)
 	fmt.Printf("Singles skipped: %d\n", stats.SinglesSkipped)
 	fmt.Printf("Excluded: %d\n", stats.Excluded)
+	if stats.RelationshipChecks > 0 {
+		fmt.Printf("Relationship checks: %d\n", stats.RelationshipChecks)
+	}
+	if stats.RelationshipCacheHits > 0 {
+		fmt.Printf("Relationship cache hits: %d\n", stats.RelationshipCacheHits)
+	}
+	if stats.RelationshipFailures > 0 {
+		fmt.Printf("Relationship failures: %d\n", stats.RelationshipFailures)
+	}
 	if stats.UserUnmonitored > 0 {
 		fmt.Printf("User unmonitored (skipped): %d\n", stats.UserUnmonitored)
 	}

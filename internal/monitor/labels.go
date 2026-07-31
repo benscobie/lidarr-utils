@@ -200,9 +200,9 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 		resolved[group.ID] = candidate
 	}
 
-	var vaFilter *VAFilter
+	var classifier *CompilationSingleClassifier
 	if opts.Policy.CompilationSingles == config.CompilationSinglesExclude {
-		vaFilter = NewVAFilter(m.opts.MBClient)
+		classifier = NewCompilationSingleClassifier(m.opts.MBClient)
 	}
 	for ownerIndex, ownerID := range bucketOrder {
 		candidateIDs := buckets[ownerID]
@@ -230,6 +230,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 		)
 
 		var catalogue []common.Album
+		var catalogueWarnings []string
 		if owner, ok := artistsByForeignID[ownerID]; ok {
 			raw, err := cache.AlbumsForArtist(owner.ID)
 			if err != nil {
@@ -237,14 +238,15 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 				log.Printf("ERROR: Failed to get albums for %s: %v", owner.ArtistName, err)
 				continue
 			}
-			catalogue = prepareLidarrCatalogue(
+			catalogue, catalogueWarnings = prepareLidarrCatalogue(
 				owner,
 				raw,
 				cache,
 				opts.Policy,
-				vaFilter,
+				classifier,
 			)
 		}
+		logSelectionWarnings(catalogueWarnings)
 
 		var synthetic []common.Album
 		for _, groupID := range candidateIDs {
@@ -253,7 +255,16 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 				synthetic = append(synthetic, candidate.album)
 			}
 		}
-		markCompilationSingles(synthetic, opts.Policy, vaFilter)
+		for i, album := range synthetic {
+			prepared, warnings := prepareAlbumForSelection(
+				album,
+				opts.Policy,
+				classifier,
+				func() ([]common.Track, error) { return album.Tracks, nil },
+			)
+			synthetic[i] = prepared
+			logSelectionWarnings(warnings)
+		}
 		catalogue = dedupeCatalogue(append(catalogue, synthetic...))
 
 		for _, album := range catalogue {
