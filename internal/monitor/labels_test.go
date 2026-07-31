@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"bytes"
+	"errors"
 	"log"
 	"strings"
 	"testing"
@@ -145,17 +146,274 @@ func captureMonitorLogs(t *testing.T, run func()) string {
 }
 
 type fakeLabelMBClient struct {
-	results map[string]musicbrainz.LabelBrowseResult
-	vaCalls int
+	results        map[string]musicbrainz.LabelBrowseResult
+	vaSources      map[string]string
+	vaErrors       map[string]error
+	vaCalls        int
+	vaCallsByGroup map[string]int
 }
 
 func (f *fakeLabelMBClient) LabelReleaseGroups(labelID string) (musicbrainz.LabelBrowseResult, error) {
 	return f.results[labelID], nil
 }
 
-func (f *fakeLabelMBClient) VACompilationSource(_ string) (string, error) {
+func (f *fakeLabelMBClient) VACompilationSource(releaseGroupID string) (string, error) {
 	f.vaCalls++
-	return "", nil
+	if f.vaCallsByGroup == nil {
+		f.vaCallsByGroup = make(map[string]int)
+	}
+	f.vaCallsByGroup[releaseGroupID]++
+	if err := f.vaErrors[releaseGroupID]; err != nil {
+		return "", err
+	}
+	return f.vaSources[releaseGroupID], nil
+}
+
+func TestPlanLabelsVAOnlyRejectsCompleteNonVACreditsBeforeLookup(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	client := &fakeMonitorClient{countingCatalogClient: catalog}
+	mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+		"label": {Groups: []musicbrainz.LabelReleaseGroup{
+			labelGroup("rg-ordinary", "Single", "ordinary-artist", "recording-1"),
+		}},
+	}}
+
+	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(LabelOptions{
+		IDs:            []string{"label"},
+		MissingArtists: config.MissingArtistsConfig{Enabled: true},
+		Policy: config.ReleaseSelectionPolicy{
+			IncludeSecondaryTypes: true,
+			VariousArtists:        config.VariousArtistsOnly,
+			CompilationSingles:    config.CompilationSinglesExclude,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Stats.GroupsFiltered != 1 || len(plan.Selected) != 0 ||
+		catalog.lookupCalls["rg-ordinary"] != 0 || len(catalog.trackCalls) != 0 || mb.vaCalls != 0 {
+		t.Fatalf("unexpected plan: %#v, lookup=%v tracks=%v relationships=%d", plan, catalog.lookupCalls, catalog.trackCalls, mb.vaCalls)
+	}
+}
+
+func TestPlanLabelsMixedVACreditUsesLidarrOwner(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.lookups["rg-mixed"] = []lidarr.Album{lookupAlbum("rg-mixed", "Album", "ordinary-artist")}
+	client := &fakeMonitorClient{countingCatalogClient: catalog}
+	group := labelGroup("rg-mixed", "Album", "ordinary-artist", "recording-1")
+	group.ArtistCredits = append(group.ArtistCredits, musicbrainz.ArtistCredit{
+		ArtistID: musicbrainz.VariousArtistsID,
+		Name:     "Various Artists",
+	})
+	mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+		"label": {Groups: []musicbrainz.LabelReleaseGroup{group}},
+	}}
+
+	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(LabelOptions{
+		IDs:            []string{"label"},
+		MissingArtists: config.MissingArtistsConfig{Enabled: true},
+		Policy: config.ReleaseSelectionPolicy{
+			IncludeSecondaryTypes: true,
+			VariousArtists:        config.VariousArtistsOnly,
+			CompilationSingles:    config.CompilationSinglesInclude,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if catalog.lookupCalls["rg-mixed"] != 1 || plan.Stats.GroupsFiltered != 1 || len(plan.Selected) != 0 {
+		t.Fatalf("mixed credit should defer to Lidarr owner: lookup=%v plan=%#v", catalog.lookupCalls, plan)
+	}
+}
+
+func TestPlanLabelsUsesLookupVAOwnerForSelection(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.lookups["rg-lookup-va"] = []lidarr.Album{lookupAlbum("rg-lookup-va", "Album", musicbrainz.VariousArtistsID)}
+	client := &fakeMonitorClient{countingCatalogClient: catalog}
+	group := labelGroup("rg-lookup-va", "Album", "ordinary-artist", "recording-1")
+	group.ArtistCredits = append(group.ArtistCredits,
+		musicbrainz.ArtistCredit{ArtistID: musicbrainz.VariousArtistsID, Name: "Various Artists"},
+		musicbrainz.ArtistCredit{Name: "incomplete credit"},
+	)
+	mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+		"label": {Groups: []musicbrainz.LabelReleaseGroup{group}},
+	}}
+
+	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(LabelOptions{
+		IDs:            []string{"label"},
+		MissingArtists: config.MissingArtistsConfig{Enabled: true},
+		Policy: config.ReleaseSelectionPolicy{
+			IncludeSecondaryTypes: true,
+			VariousArtists:        config.VariousArtistsOnly,
+			CompilationSingles:    config.CompilationSinglesInclude,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if catalog.lookupCalls["rg-lookup-va"] != 1 || len(plan.Selected) != 1 || !plan.Selected[0].Album.IsVariousArtists {
+		t.Fatalf("lookup VA owner was not selected: lookup=%v plan=%#v", catalog.lookupCalls, plan)
+	}
+}
+
+func TestPlanLabelsVAOwnerObeysMissingArtistsPolicy(t *testing.T) {
+	t.Run("disabled skips canonical VA credit before lookup", func(t *testing.T) {
+		catalog := newCountingCatalogClient()
+		client := &fakeMonitorClient{countingCatalogClient: catalog}
+		mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+			"label": {Groups: []musicbrainz.LabelReleaseGroup{
+				labelGroup("rg-va", "Album", musicbrainz.VariousArtistsID, "recording-1"),
+			}},
+		}}
+
+		plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(LabelOptions{
+			IDs: []string{"label"},
+			Policy: config.ReleaseSelectionPolicy{
+				IncludeSecondaryTypes: true,
+				VariousArtists:        config.VariousArtistsOnly,
+				CompilationSingles:    config.CompilationSinglesInclude,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if plan.Stats.MissingArtistSkipped != 1 || catalog.lookupCalls["rg-va"] != 0 || len(plan.Selected) != 0 {
+			t.Fatalf("missing VA owner should skip before lookup: lookup=%v plan=%#v", catalog.lookupCalls, plan)
+		}
+	})
+
+	t.Run("enabled selects exact missing VA owner", func(t *testing.T) {
+		catalog := newCountingCatalogClient()
+		catalog.lookups["rg-va"] = []lidarr.Album{lookupAlbum("rg-va", "Album", musicbrainz.VariousArtistsID)}
+		client := &fakeMonitorClient{countingCatalogClient: catalog}
+		mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+			"label": {Groups: []musicbrainz.LabelReleaseGroup{
+				labelGroup("rg-va", "Album", musicbrainz.VariousArtistsID, "recording-1"),
+			}},
+		}}
+
+		plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(LabelOptions{
+			IDs:            []string{"label"},
+			MissingArtists: config.MissingArtistsConfig{Enabled: true},
+			Policy: config.ReleaseSelectionPolicy{
+				IncludeSecondaryTypes: true,
+				VariousArtists:        config.VariousArtistsOnly,
+				CompilationSingles:    config.CompilationSinglesInclude,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if catalog.lookupCalls["rg-va"] != 1 || len(plan.Selected) != 1 || !plan.Selected[0].Album.IsVariousArtists {
+			t.Fatalf("missing VA owner should be selectable when enabled: lookup=%v plan=%#v", catalog.lookupCalls, plan)
+		}
+	})
+}
+
+func TestPlanLabelsCompilationSinglesIncludeDoesNoRelationshipWork(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.lookups["rg-single"] = []lidarr.Album{lookupAlbum("rg-single", "Single", "missing-artist")}
+	client := &fakeMonitorClient{countingCatalogClient: catalog}
+	mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+		"label": {Groups: []musicbrainz.LabelReleaseGroup{
+			labelGroup("rg-single", "Single", "missing-artist", "recording-1"),
+		}},
+	}}
+
+	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(LabelOptions{
+		IDs:            []string{"label"},
+		MissingArtists: config.MissingArtistsConfig{Enabled: true},
+		Policy: config.ReleaseSelectionPolicy{
+			IncludeSecondaryTypes: true,
+			VariousArtists:        config.VariousArtistsInclude,
+			CompilationSingles:    config.CompilationSinglesInclude,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Selected) != 1 || mb.vaCalls != 0 {
+		t.Fatalf("eligible single should need no relationship work: plan=%#v calls=%v", plan, mb.vaCallsByGroup)
+	}
+}
+
+func TestPlanLabelsCompilationSinglesExcludeChecksOnlyOtherwiseEligibleSingles(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	vinyl := lookupAlbum("rg-vinyl", "Single", "missing-artist")
+	vinyl.Releases = []lidarr.Release{{Format: "Vinyl"}}
+	catalog.lookups["rg-vinyl"] = []lidarr.Album{vinyl}
+	catalog.lookups["rg-album"] = []lidarr.Album{lookupAlbum("rg-album", "Album", "missing-artist")}
+	catalog.lookups["rg-related"] = []lidarr.Album{lookupAlbum("rg-related", "Single", "missing-artist")}
+	client := &fakeMonitorClient{countingCatalogClient: catalog}
+	vinylGroup := labelGroup("rg-vinyl", "Single", "missing-artist", "recording-vinyl")
+	vinylGroup.Formats = []string{"Vinyl"}
+	mb := &fakeLabelMBClient{
+		results: map[string]musicbrainz.LabelBrowseResult{
+			"label": {Groups: []musicbrainz.LabelReleaseGroup{
+				vinylGroup,
+				labelGroup("rg-album", "Album", "missing-artist", "recording-album"),
+				labelGroup("rg-related", "Single", "missing-artist", "recording-related"),
+			}},
+		},
+		vaSources: map[string]string{"rg-related": "Compilation Album"},
+	}
+
+	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(LabelOptions{
+		IDs:            []string{"label"},
+		MissingArtists: config.MissingArtistsConfig{Enabled: true},
+		Policy: config.ReleaseSelectionPolicy{
+			IncludeSecondaryTypes: true,
+			ExcludeFormats:        []string{"Vinyl"},
+			VariousArtists:        config.VariousArtistsInclude,
+			CompilationSingles:    config.CompilationSinglesExclude,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Selected) != 1 || plan.Selected[0].Album.ForeignAlbumID != "rg-album" ||
+		mb.vaCallsByGroup["rg-related"] != 1 || mb.vaCallsByGroup["rg-vinyl"] != 0 ||
+		mb.vaCallsByGroup["rg-album"] != 0 || len(catalog.trackCalls) != 0 {
+		t.Fatalf("only eligible single should be checked: plan=%#v calls=%v tracks=%v", plan, mb.vaCallsByGroup, catalog.trackCalls)
+	}
+}
+
+func TestPlanLabelsCompilationSinglesDefersDiscoveredTrackAttachment(t *testing.T) {
+	group := labelGroup("rg-single", "Single", "missing-artist", "recording-1")
+	if album := albumFromLabelGroup(group); len(album.Tracks) != 0 {
+		t.Fatalf("discovered tracks must remain deferred until the album is policy-eligible: %#v", album.Tracks)
+	}
+}
+
+func TestPlanLabelsCompilationRelationshipFailureWarnsOnceAndFailsOpen(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.lookups["rg-single"] = []lidarr.Album{lookupAlbum("rg-single", "Single", "missing-artist")}
+	client := &fakeMonitorClient{countingCatalogClient: catalog}
+	mb := &fakeLabelMBClient{
+		results: map[string]musicbrainz.LabelBrowseResult{
+			"label": {Groups: []musicbrainz.LabelReleaseGroup{
+				labelGroup("rg-single", "Single", "missing-artist", "recording-1"),
+			}},
+		},
+		vaErrors: map[string]error{"rg-single": errors.New("unavailable")},
+	}
+
+	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(LabelOptions{
+		IDs:            []string{"label"},
+		MissingArtists: config.MissingArtistsConfig{Enabled: true},
+		Policy: config.ReleaseSelectionPolicy{
+			IncludeSecondaryTypes: true,
+			VariousArtists:        config.VariousArtistsInclude,
+			CompilationSingles:    config.CompilationSinglesExclude,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Selected) != 1 || plan.Stats.Failures != 1 || plan.Stats.Warnings != 1 ||
+		plan.Stats.RelationshipChecks != 1 || plan.Stats.RelationshipFailures != 1 {
+		t.Fatalf("relationship errors should fail open and be counted: %#v", plan)
+	}
 }
 
 func TestPlanLabelsUsesNonLabelCatalogueForCoverage(t *testing.T) {

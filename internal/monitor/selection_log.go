@@ -29,8 +29,9 @@ func logExcludedAlbum(
 	)
 }
 
-func logSelectionWarnings(warnings []string) {
+func logSelectionWarnings(warnings []string) int {
 	for _, warning := range warnings {
 		log.Printf("  WARNING: %s", warning)
 	}
+	return len(warnings)
 }

@@ -44,6 +44,10 @@ type LabelStats struct {
 	AlbumsMonitored       int
 	SearchesSubmitted     int
 	Failures              int
+	Warnings              int
+	RelationshipChecks    int
+	RelationshipCacheHits int
+	RelationshipFailures  int
 }
 
 type resolvedLabelCandidate struct {
@@ -51,6 +55,7 @@ type resolvedLabelCandidate struct {
 	lookup         *lidarr.Album
 	artistExists   bool
 	ownerForeignID string
+	tracks         []common.Track
 }
 
 func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
@@ -85,8 +90,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 	for _, groupID := range groupOrder {
 		group := groups[groupID]
 		groupAlbum := albumFromLabelGroup(group)
-		groupAlbum.IsVariousArtists = hasDirectVACredit(groupAlbum)
-		if reason := releasePolicyExclusionReason(groupAlbum, opts.Policy); reason != "" {
+		if reason := earlyLabelPolicyExclusion(group, opts.Policy); reason != "" {
 			plan.Stats.GroupsFiltered++
 			logExcludedAlbum(ExcludedAlbum{Album: groupAlbum, Reason: reason}, true)
 			continue
@@ -132,7 +136,10 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			}
 		}
 
-		candidate := resolvedLabelCandidate{album: groupAlbum}
+		candidate := resolvedLabelCandidate{
+			album:  groupAlbum,
+			tracks: tracksFromLabelGroup(group),
+		}
 		if existingAlbum != nil {
 			candidate.album = mergeLookup(groupAlbum, *existingAlbum)
 			candidate.artistExists = true
@@ -190,6 +197,11 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			continue
 		}
 		candidate.album.IsVariousArtists = candidate.ownerForeignID == musicbrainz.VariousArtistsID
+		if reason := variousArtistsExclusionReason(candidate.album.IsVariousArtists, opts.Policy); reason != "" {
+			plan.Stats.GroupsFiltered++
+			logExcludedAlbum(ExcludedAlbum{Album: candidate.album, Reason: reason}, true)
+			continue
+		}
 		if _, exists := buckets[candidate.ownerForeignID]; !exists {
 			bucketOrder = append(bucketOrder, candidate.ownerForeignID)
 		}
@@ -246,24 +258,24 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 				classifier,
 			)
 		}
-		logSelectionWarnings(catalogueWarnings)
+		plan.Stats.Warnings += logSelectionWarnings(catalogueWarnings)
 
 		var synthetic []common.Album
 		for _, groupID := range candidateIDs {
 			candidate := resolved[groupID]
-			if !containsForeignAlbum(catalogue, groupID) {
-				synthetic = append(synthetic, candidate.album)
+			if containsForeignAlbum(catalogue, groupID) {
+				continue
 			}
-		}
-		for i, album := range synthetic {
 			prepared, warnings := prepareAlbumForSelection(
-				album,
+				candidate.album,
 				opts.Policy,
 				classifier,
-				func() ([]common.Track, error) { return album.Tracks, nil },
+				func() ([]common.Track, error) {
+					return append([]common.Track(nil), candidate.tracks...), nil
+				},
 			)
-			synthetic[i] = prepared
-			logSelectionWarnings(warnings)
+			synthetic = append(synthetic, prepared)
+			plan.Stats.Warnings += logSelectionWarnings(warnings)
 		}
 		catalogue = dedupeCatalogue(append(catalogue, synthetic...))
 
@@ -286,7 +298,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 		for _, excluded := range result.Excluded {
 			logExcludedAlbum(excluded, false)
 		}
-		logSelectionWarnings(result.Warnings)
+		plan.Stats.Warnings += logSelectionWarnings(result.Warnings)
 		for _, album := range result.ToMonitor {
 			candidate := resolved[album.ForeignAlbumID]
 			switch {
@@ -315,6 +327,22 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 				ArtistExists: candidate.artistExists,
 			})
 		}
+	}
+	if classifier != nil {
+		classifierStats := classifier.Stats()
+		plan.Stats.RelationshipChecks = classifierStats.Checks
+		plan.Stats.RelationshipCacheHits = classifierStats.CacheHits
+		plan.Stats.RelationshipFailures = classifierStats.Failures
+		plan.Stats.Failures += classifierStats.Failures
+	}
+	if plan.Stats.GroupsDiscovered > 0 && len(plan.Selected) == 0 {
+		log.Printf(
+			"No label albums selected: filtered=%d coverage_skipped=%d missing_owner_skipped=%d already_monitored=%d",
+			plan.Stats.GroupsFiltered,
+			plan.Stats.GroupsCoverageSkipped,
+			plan.Stats.MissingArtistSkipped,
+			plan.Stats.AlreadyMonitored,
+		)
 	}
 
 	return plan, nil
@@ -514,6 +542,18 @@ func (m *Monitor) PrintLabelSummary(stats *LabelStats, duration time.Duration) {
 		fmt.Printf("Albums monitored: %d\n", stats.AlbumsMonitored)
 		fmt.Printf("Searches submitted: %d\n", stats.SearchesSubmitted)
 	}
+	if stats.RelationshipChecks > 0 {
+		fmt.Printf("Relationship checks: %d\n", stats.RelationshipChecks)
+	}
+	if stats.RelationshipCacheHits > 0 {
+		fmt.Printf("Relationship cache hits: %d\n", stats.RelationshipCacheHits)
+	}
+	if stats.RelationshipFailures > 0 {
+		fmt.Printf("Relationship failures: %d\n", stats.RelationshipFailures)
+	}
+	if stats.Warnings > 0 {
+		fmt.Printf("Warnings: %d\n", stats.Warnings)
+	}
 	fmt.Printf("Failures: %d\n\n", stats.Failures)
 }
 
@@ -579,14 +619,19 @@ func albumFromLabelGroup(group musicbrainz.LabelReleaseGroup) common.Album {
 	for _, format := range group.Formats {
 		album.Releases = append(album.Releases, common.Release{Format: format})
 	}
+	return album
+}
+
+func tracksFromLabelGroup(group musicbrainz.LabelReleaseGroup) []common.Track {
+	tracks := make([]common.Track, 0, len(group.Tracks))
 	for _, track := range group.Tracks {
-		album.Tracks = append(album.Tracks, common.Track{
+		tracks = append(tracks, common.Track{
 			Title:              track.Title,
 			ForeignTrackID:     track.ID,
 			ForeignRecordingID: track.RecordingID,
 		})
 	}
-	return album
+	return tracks
 }
 
 func mergeLookup(album common.Album, lookup lidarr.Album) common.Album {
@@ -633,6 +678,32 @@ func usableArtistCredits(group musicbrainz.LabelReleaseGroup) ([]string, bool) {
 		ids = append(ids, credit.ArtistID)
 	}
 	return ids, complete
+}
+
+func earlyLabelPolicyExclusion(
+	group musicbrainz.LabelReleaseGroup,
+	policy config.ReleaseSelectionPolicy,
+) string {
+	album := albumFromLabelGroup(group)
+	if reason := secondaryTypeExclusionReason(album, policy); reason != "" {
+		return reason
+	}
+	creditIDs, complete := usableArtistCredits(group)
+	if !complete || len(creditIDs) == 0 {
+		return ""
+	}
+	containsVA := containsString(creditIDs, musicbrainz.VariousArtistsID)
+	switch policy.VariousArtists {
+	case config.VariousArtistsOnly:
+		if !containsVA {
+			return "not credited to Various Artists; cannot be VA-owned in Lidarr"
+		}
+	case config.VariousArtistsExclude:
+		if len(creditIDs) == 1 && containsVA {
+			return "owned by Various Artists in Lidarr"
+		}
+	}
+	return ""
 }
 
 func albumByForeignID(albums []lidarr.Album, id string) (lidarr.Album, bool) {
@@ -716,15 +787,6 @@ func dedupeCatalogue(albums []common.Album) []common.Album {
 		result = append(result, album)
 	}
 	return result
-}
-
-func hasDirectVACredit(album common.Album) bool {
-	for _, artistID := range album.ForeignArtistIDs {
-		if artistID == musicbrainz.VariousArtistsID {
-			return true
-		}
-	}
-	return false
 }
 
 func mergeDiscoveredGroup(
