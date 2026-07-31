@@ -44,7 +44,7 @@ Entry point: `main.go` → `cmd.Execute()`.
   and release-group merging, plus VA relationship lookup.
 - `internal/common/`: API-independent domain types, album classification,
   format/secondary filters, and track matching.
-- `internal/monitor/`: run-scoped catalogue and VA caches, pure release
+- `internal/monitor/`: run-scoped catalogue and compilation-relationship caches, pure release
   selection, artist orchestration, read-only label planning, shared
   per-release decision logging, safe import payloads, state protection, and
   shared batch application.

@@ -366,8 +366,56 @@ func TestPlanLabelsUsesLookupVAOwnerForSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if catalog.lookupCalls["rg-lookup-va"] != 1 || len(plan.Selected) != 1 || !plan.Selected[0].Album.IsVariousArtists {
+	if catalog.lookupCalls["rg-lookup-va"] != 1 ||
+		len(plan.Selected) != 1 ||
+		!plan.Selected[0].Album.IsVariousArtists ||
+		plan.Selected[0].OwnerForeignID != musicbrainz.VariousArtistsID {
 		t.Fatalf("lookup VA owner was not selected: lookup=%v plan=%#v", catalog.lookupCalls, plan)
+	}
+}
+
+func TestPlanLabelsExactLookupWithoutOwnerDoesNotUseVACredit(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.lookups["rg-ownerless"] = []lidarr.Album{{
+		ForeignAlbumID: "rg-ownerless",
+		Title:          "Ownerless Lookup",
+		AlbumType:      "Album",
+		Releases:       []lidarr.Release{{Format: "Digital Media"}},
+	}}
+	client := &fakeMonitorClient{countingCatalogClient: catalog}
+	mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+		"label": {Groups: []musicbrainz.LabelReleaseGroup{
+			labelGroup(
+				"rg-ownerless",
+				"Album",
+				musicbrainz.VariousArtistsID,
+				"recording-1",
+			),
+		}},
+	}}
+
+	var plan LabelPlan
+	output := captureMonitorLogs(t, func() {
+		var err error
+		plan, err = NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(LabelOptions{
+			IDs:            []string{"label"},
+			MissingArtists: config.MissingArtistsConfig{Enabled: true},
+			Policy: config.ReleaseSelectionPolicy{
+				IncludeSecondaryTypes: true,
+				VariousArtists:        config.VariousArtistsOnly,
+				CompilationSingles:    config.CompilationSinglesInclude,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if catalog.lookupCalls["rg-ownerless"] != 1 || plan.Stats.Failures != 1 || len(plan.Selected) != 0 {
+		t.Fatalf("ownerless lookup should fail planning: lookup=%v plan=%#v", catalog.lookupCalls, plan)
+	}
+	if !strings.Contains(output, "Lidarr lookup did not identify an artist for rg-ownerless") {
+		t.Fatalf("missing owner-resolution diagnostic:\n%s", output)
 	}
 }
 

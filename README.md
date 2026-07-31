@@ -301,7 +301,7 @@ to Lidarr's import exclusion list.
 
 - Go 1.26.3 or newer when building from source
 - Lidarr API access
-- MusicBrainz access for label discovery and optional Various Artists filtering
+- MusicBrainz access for label discovery and optional compilation-relationship filtering
 
 ## License
 

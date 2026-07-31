@@ -21,9 +21,10 @@ type LabelOptions struct {
 }
 
 type PlannedLabelAlbum struct {
-	Album        common.Album
-	Lookup       *lidarr.Album
-	ArtistExists bool
+	Album          common.Album
+	Lookup         *lidarr.Album
+	ArtistExists   bool
+	OwnerForeignID string
 }
 
 type LabelPlan struct {
@@ -112,7 +113,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			len(creditedExisting) == 0 {
 			plan.Stats.MissingArtistSkipped++
 			log.Printf(
-				"  Skip: %s - %s (%s) — artist is not in Lidarr and add_missing_artists is false",
+				"  Skip: %s - %s (%s) — artist is not in Lidarr and monitor.labels.missing_artists.enabled is false",
 				groupAlbum.ArtistName,
 				groupAlbum.Title,
 				groupAlbum.AlbumType,
@@ -161,7 +162,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 				continue
 			}
 
-			owner, candidate.ownerForeignID = lookupOwner(exact, creditIDs, artistsByID)
+			owner, candidate.ownerForeignID = lookupOwner(exact, artistsByID)
 			if owner.ID != 0 {
 				candidate.artistExists = true
 				candidate.ownerForeignID = owner.ForeignID
@@ -176,7 +177,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			if !candidate.artistExists && !opts.MissingArtists.Enabled {
 				plan.Stats.MissingArtistSkipped++
 				log.Printf(
-					"  Skip: %s - %s (%s) — artist is not in Lidarr and add_missing_artists is false",
+					"  Skip: %s - %s (%s) — artist is not in Lidarr and monitor.labels.missing_artists.enabled is false",
 					candidate.album.ArtistName,
 					candidate.album.Title,
 					candidate.album.AlbumType,
@@ -325,9 +326,10 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 				)
 			}
 			plan.Selected = append(plan.Selected, PlannedLabelAlbum{
-				Album:        album,
-				Lookup:       candidate.lookup,
-				ArtistExists: candidate.artistExists,
+				Album:          album,
+				Lookup:         candidate.lookup,
+				ArtistExists:   candidate.artistExists,
+				OwnerForeignID: candidate.ownerForeignID,
 			})
 		}
 	}
@@ -384,7 +386,7 @@ func (m *Monitor) RunLabels(opts LabelOptions) (*LabelStats, error) {
 			continue
 		}
 
-		ownerID := plannedOwnerForeignID(planned)
+		ownerID := planned.OwnerForeignID
 		if !planned.ArtistExists && !opts.MissingArtists.Enabled {
 			stats.Failures++
 			log.Printf(
@@ -487,18 +489,6 @@ func shapeMissingArtist(artist *lidarr.Artist, root lidarr.RootFolder) {
 		Monitored:              false,
 		SearchForMissingAlbums: false,
 	}
-}
-
-func plannedOwnerForeignID(planned PlannedLabelAlbum) string {
-	if planned.Lookup != nil &&
-		planned.Lookup.Artist != nil &&
-		planned.Lookup.Artist.ForeignID != "" {
-		return planned.Lookup.Artist.ForeignID
-	}
-	if len(planned.Album.ForeignArtistIDs) > 0 {
-		return planned.Album.ForeignArtistIDs[0]
-	}
-	return ""
 }
 
 func cloneAlbum(album lidarr.Album) lidarr.Album {
@@ -745,7 +735,6 @@ func exactLookup(albums []lidarr.Album, id string) (lidarr.Album, bool) {
 
 func lookupOwner(
 	album lidarr.Album,
-	creditIDs []string,
 	artistsByID map[int]lidarr.Artist,
 ) (lidarr.Artist, string) {
 	if artist, ok := artistsByID[album.ArtistID]; ok {
@@ -758,9 +747,6 @@ func lookupOwner(
 		if album.Artist.ForeignID != "" {
 			return lidarr.Artist{}, album.Artist.ForeignID
 		}
-	}
-	if len(creditIDs) == 1 {
-		return lidarr.Artist{}, creditIDs[0]
 	}
 	return lidarr.Artist{}, ""
 }
