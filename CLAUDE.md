@@ -62,11 +62,18 @@ Entry point: `main.go` → `cmd.Execute()`.
 - MusicBrainz label browsing is refreshed on every run. Duplicate label IDs
   and release groups are deduplicated within the run rather than persistently
   cached.
-- `VAFilter` is run-scoped and caches one relationship result per
-  release-group MBID, including returned errors.
+- Artist and label monitoring own independent typed `ReleaseSelectionPolicy`
+  values; neither mode inherits selection settings from the other.
+- Various Artists classification is authoritative only when determined from
+  the Lidarr catalogue owner, not from MusicBrainz artist credits.
+- The run-scoped compilation-single classifier caches positive, negative, and
+  error relationship results per release-group MBID.
 - All-artist mode uses one bulk album snapshot. Specific-artist and label modes
   fetch only relevant distinct artist catalogues.
-- Format and secondary-type filters run before track hydration.
+- Selection stages are cheap metadata, owner/format resolution, optional
+  relationship classification, tracks, then coverage.
+- MusicBrainz label browsing is fresh and paginated on every run, without
+  per-release-group track requests.
 - Existing label release groups bypass album lookup; missing groups use one
   cached exact release-group MBID lookup.
 - Label candidate membership and coverage providers are separate: non-label
@@ -78,6 +85,11 @@ Entry point: `main.go` → `cmd.Execute()`.
   their numeric Lidarr album IDs are zero until import.
 - `PlanLabels` performs no Lidarr mutations, although it emits decision logs.
   Album/artist creation occurs only after planning.
+- Nested `missing_artists` settings shape a Lidarr artist only after its
+  release has passed selection.
+- Relationship counters expose requests, cache hits, and failures. A failed
+  relationship lookup fails open and emits a warning only for its first
+  occurrence in a run.
 - New albums are added unmonitored with automatic search disabled. Shared
   `applyAlbums` owns state filtering, dry-run behavior, ID deduplication,
   batch monitoring, state persistence, and batch search.

@@ -50,11 +50,13 @@ dedupe:
 
 monitor:
   artists:
-    skip_fully_covered_releases: true
-    official_only: false
-    exclude_secondary_types: []
-    exclude_formats: []
-    exclude_va_releases: false
+    selection:
+      include_secondary_types: true
+      exclude_secondary_types: []
+      exclude_formats: []
+      various_artists: include          # include | exclude | only
+      compilation_singles: include      # include | exclude
+      skip_fully_covered_releases: true
     schedule:
       enabled: false
       cron: "0 2 * * *"
@@ -63,13 +65,16 @@ monitor:
   labels:
     ids:
       - "a5bfec28-ea8f-426d-ab23-e14aa692c9b5"
-    add_missing_artists: false
-    root_folder: ""
-    skip_fully_covered_releases: true
-    official_only: false
-    exclude_secondary_types: []
-    exclude_formats: []
-    exclude_va_releases: false
+    missing_artists:
+      enabled: false                    # Set true to add releases when their owning artist is absent
+      root_folder: ""
+    selection:
+      include_secondary_types: true
+      exclude_secondary_types: []
+      exclude_formats: []
+      various_artists: only
+      compilation_singles: include
+      skip_fully_covered_releases: true
     schedule:
       enabled: false
       cron: "0 */6 * * *"
@@ -104,11 +109,12 @@ The following environment variables are explicitly supported:
 
 | Environment variable | Configuration key |
 |---|---|
-| `LIDARR_UTILS_MONITOR_ARTISTS_OFFICIAL_ONLY` | `monitor.artists.official_only` |
-| `LIDARR_UTILS_MONITOR_ARTISTS_EXCLUDE_SECONDARY_TYPES` | `monitor.artists.exclude_secondary_types` |
-| `LIDARR_UTILS_MONITOR_ARTISTS_EXCLUDE_FORMATS` | `monitor.artists.exclude_formats` |
-| `LIDARR_UTILS_MONITOR_ARTISTS_EXCLUDE_VA_RELEASES` | `monitor.artists.exclude_va_releases` |
-| `LIDARR_UTILS_MONITOR_ARTISTS_SKIP_FULLY_COVERED_RELEASES` | `monitor.artists.skip_fully_covered_releases` |
+| `LIDARR_UTILS_MONITOR_ARTISTS_SELECTION_INCLUDE_SECONDARY_TYPES` | `monitor.artists.selection.include_secondary_types` |
+| `LIDARR_UTILS_MONITOR_ARTISTS_SELECTION_EXCLUDE_SECONDARY_TYPES` | `monitor.artists.selection.exclude_secondary_types` |
+| `LIDARR_UTILS_MONITOR_ARTISTS_SELECTION_EXCLUDE_FORMATS` | `monitor.artists.selection.exclude_formats` |
+| `LIDARR_UTILS_MONITOR_ARTISTS_SELECTION_VARIOUS_ARTISTS` | `monitor.artists.selection.various_artists` |
+| `LIDARR_UTILS_MONITOR_ARTISTS_SELECTION_COMPILATION_SINGLES` | `monitor.artists.selection.compilation_singles` |
+| `LIDARR_UTILS_MONITOR_ARTISTS_SELECTION_SKIP_FULLY_COVERED_RELEASES` | `monitor.artists.selection.skip_fully_covered_releases` |
 | `LIDARR_UTILS_MONITOR_ARTISTS_SCHEDULE_ENABLED` | `monitor.artists.schedule.enabled` |
 | `LIDARR_UTILS_MONITOR_ARTISTS_SCHEDULE_CRON` | `monitor.artists.schedule.cron` |
 | `LIDARR_UTILS_MONITOR_ARTISTS_SCHEDULE_RUN_ON_START` | `monitor.artists.schedule.run_on_start` |
@@ -117,13 +123,14 @@ The following environment variables are explicitly supported:
 
 | Environment variable | Configuration key |
 |---|---|
-| `LIDARR_UTILS_MONITOR_LABELS_ADD_MISSING_ARTISTS` | `monitor.labels.add_missing_artists` |
-| `LIDARR_UTILS_MONITOR_LABELS_ROOT_FOLDER` | `monitor.labels.root_folder` |
-| `LIDARR_UTILS_MONITOR_LABELS_OFFICIAL_ONLY` | `monitor.labels.official_only` |
-| `LIDARR_UTILS_MONITOR_LABELS_EXCLUDE_SECONDARY_TYPES` | `monitor.labels.exclude_secondary_types` |
-| `LIDARR_UTILS_MONITOR_LABELS_EXCLUDE_FORMATS` | `monitor.labels.exclude_formats` |
-| `LIDARR_UTILS_MONITOR_LABELS_EXCLUDE_VA_RELEASES` | `monitor.labels.exclude_va_releases` |
-| `LIDARR_UTILS_MONITOR_LABELS_SKIP_FULLY_COVERED_RELEASES` | `monitor.labels.skip_fully_covered_releases` |
+| `LIDARR_UTILS_MONITOR_LABELS_MISSING_ARTISTS_ENABLED` | `monitor.labels.missing_artists.enabled` |
+| `LIDARR_UTILS_MONITOR_LABELS_MISSING_ARTISTS_ROOT_FOLDER` | `monitor.labels.missing_artists.root_folder` |
+| `LIDARR_UTILS_MONITOR_LABELS_SELECTION_INCLUDE_SECONDARY_TYPES` | `monitor.labels.selection.include_secondary_types` |
+| `LIDARR_UTILS_MONITOR_LABELS_SELECTION_EXCLUDE_SECONDARY_TYPES` | `monitor.labels.selection.exclude_secondary_types` |
+| `LIDARR_UTILS_MONITOR_LABELS_SELECTION_EXCLUDE_FORMATS` | `monitor.labels.selection.exclude_formats` |
+| `LIDARR_UTILS_MONITOR_LABELS_SELECTION_VARIOUS_ARTISTS` | `monitor.labels.selection.various_artists` |
+| `LIDARR_UTILS_MONITOR_LABELS_SELECTION_COMPILATION_SINGLES` | `monitor.labels.selection.compilation_singles` |
+| `LIDARR_UTILS_MONITOR_LABELS_SELECTION_SKIP_FULLY_COVERED_RELEASES` | `monitor.labels.selection.skip_fully_covered_releases` |
 | `LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_ENABLED` | `monitor.labels.schedule.enabled` |
 | `LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_CRON` | `monitor.labels.schedule.cron` |
 | `LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_RUN_ON_START` | `monitor.labels.schedule.run_on_start` |
@@ -170,7 +177,7 @@ Global options include `--config`, `--dry-run`, and `--log-file`.
 
 Artist mode gives releases an Album > EP > Single priority. It matches tracks
 by MusicBrainz recording ID, then track ID, then normalized title. When
-`skip_fully_covered_releases` is enabled, an EP or single is skipped if its
+`monitor.artists.selection.skip_fully_covered_releases` is enabled, an EP or single is skipped if its
 tracks are already covered by retained releases at the same or a higher tier.
 Albums remain eligible regardless of overlap.
 
@@ -187,33 +194,45 @@ For artists already in Lidarr, the full artist catalogue participates in track
 coverage. A non-label album can therefore suppress a redundant label EP or
 single, but non-label releases never become label monitoring candidates. For a
 missing artist, coverage uses only release groups discovered through the
-configured labels. Set `monitor.labels.skip_fully_covered_releases: false` to
+configured labels. Set `monitor.labels.selection.skip_fully_covered_releases: false` to
 keep every otherwise eligible label release group.
 
 Existing albums are matched only by MusicBrainz release-group MBID. Missing
 albums use an exact Lidarr lookup:
 
-- With `add_missing_artists: false`, releases belonging to absent artists are skipped.
-- With `add_missing_artists: true`, only artists needed by selected release groups are added.
+- With `missing_artists.enabled: false`, releases whose owning artists are absent from Lidarr are skipped.
+- With `missing_artists.enabled: true`, only owners needed by selected release groups are added, including canonical Various Artists when it owns the release.
 - A missing artist uses the selected Lidarr root folder's default quality
   profile, metadata profile, and tags. It starts unmonitored with
   `monitorNewItems: none` and no artist-wide search.
-- If more than one accessible root exists, `root_folder` must select one.
+- If more than one accessible root exists, `missing_artists.root_folder` must select one.
   Trailing `/` and `\` separators are ignored; path case is preserved.
+
+`missing_artists` shapes a Lidarr artist only after its releases pass selection.
+A future Lidarr `Monitor New Albums` option is outside this workflow: albums
+monitored by Lidarr through that option bypass this utility's selection policy.
 
 Positional label IDs replace configured IDs for that run. They must be valid
 MusicBrainz UUIDs.
 
-### Filtering and Various Artists
+### Release selection and Various Artists
 
-Each monitor mode has independent `official_only`,
-`exclude_secondary_types`, `exclude_formats`, `exclude_va_releases`, and
-coverage settings. Track-independent filters run before track hydration.
+Each monitor mode has an independent `selection` policy. Secondary-type,
+format, Various Artists, compilation-single, and coverage settings do not
+inherit between artist and label monitoring. Track-independent filtering runs
+before track hydration.
 
-When enabled, `exclude_va_releases` excludes both release groups credited
-directly to MusicBrainz's Various Artists entity and EPs/singles linked to a
-Various Artists compilation through a MusicBrainz `single from` relationship.
-MusicBrainz relationship results are cached for the run.
+`include_secondary_types: true` allows secondary types except those listed in
+`exclude_secondary_types`. Set it to `false` to exclude every release group
+with a secondary type; combining that with a non-empty exclusion list is a
+configuration error. `various_artists` accepts `include`, `exclude`, or `only`.
+
+Various Artists (VA) means the catalogue owner Lidarr assigns: MusicBrainz's
+canonical Various Artists entity. An ordinary artist's EP or single that is
+linked to a VA compilation is still not VA-owned. `compilation_singles: exclude`
+is independent of `various_artists`: it checks only otherwise eligible EPs and
+singles for MusicBrainz's explicit `single from` relationship to a compilation
+directly credited to VA. Relationship results are cached for the run.
 
 ### Scheduling
 
@@ -225,6 +244,10 @@ dedupe.
 Jobs share a serialized FIFO runner, so Lidarr mutations never overlap.
 Repeated triggers for a job that is already queued or running are coalesced.
 SIGINT/SIGTERM drops queued work and waits for the active job to finish.
+Scheduled monitoring backfills currently eligible releases and adds newly
+eligible releases on later runs; it never unmonitors releases that no longer
+match the policy. Downloaded releases remain unchanged and can still provide
+track coverage.
 
 ## Safety
 
@@ -240,9 +263,24 @@ SIGINT/SIGTERM drops queued work and waits for the active job to finish.
   batch is the only monitoring/search mutation.
 - `dedupe` can delete downloaded duplicate files. Preview it with `--dry-run`.
 
-## v2 migration
+## Major-version configuration migration
 
-v2 intentionally removes the v1 compatibility surface:
+This major version intentionally removes compatibility aliases. Move each
+mode-specific setting into its mode's `selection` block:
+
+| Removed configuration | Replacement |
+|---|---|
+| `official_only: false` | `selection.include_secondary_types: true` |
+| `official_only: true` | `selection.include_secondary_types: false` |
+| `exclude_secondary_types` | `selection.exclude_secondary_types` |
+| `exclude_formats` | `selection.exclude_formats` |
+| `skip_fully_covered_releases` | `selection.skip_fully_covered_releases` |
+| `exclude_va_releases: false` | `selection.various_artists: include` and `selection.compilation_singles: include` |
+| `exclude_va_releases: true` | `selection.various_artists: exclude` and `selection.compilation_singles: exclude` |
+| `monitor.labels.add_missing_artists` | `monitor.labels.missing_artists.enabled` |
+| `monitor.labels.root_folder` | `monitor.labels.missing_artists.root_folder` |
+
+The prior major-version command migrations remain:
 
 | Removed v1 form | v2 replacement |
 |---|---|
