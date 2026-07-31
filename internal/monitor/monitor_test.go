@@ -312,7 +312,7 @@ func TestSelectAlbumsToMonitor_DownloadedAlbumTracksStillDedup(t *testing.T) {
 			},
 		},
 		{
-			ID: 2, Title: "Redundant EP", AlbumType: "EP",
+			ID: 2, Title: "Redundant Single", AlbumType: "Single",
 			Tracks: []common.Track{
 				{ID: 3, Title: "Track 1", ForeignRecordingID: "rec-1"},
 			},
@@ -322,12 +322,12 @@ func TestSelectAlbumsToMonitor_DownloadedAlbumTracksStillDedup(t *testing.T) {
 	result := SelectAlbumsToMonitor(albums, SelectionOptions{Policy: testSelectionPolicy(true)})
 
 	// Downloaded album excluded from monitoring, but its tracks should still
-	// cause the EP to be skipped (tracks already covered).
+	// cause the single to be skipped (tracks already covered).
 	if len(result.ToMonitor) != 0 {
 		t.Fatalf("expected 0 to monitor, got %d", len(result.ToMonitor))
 	}
 	if len(result.Skipped) != 1 {
-		t.Fatalf("expected 1 skipped (EP covered by downloaded album), got %d", len(result.Skipped))
+		t.Fatalf("expected 1 skipped (single covered by downloaded album), got %d", len(result.Skipped))
 	}
 }
 

@@ -3,9 +3,12 @@ package monitor
 import (
 	"bytes"
 	"errors"
+	"io"
 	"log"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/benscobie/lidarr-utils/internal/config"
 	"github.com/benscobie/lidarr-utils/internal/lidarr"
@@ -145,8 +148,57 @@ func captureMonitorLogs(t *testing.T, run func()) string {
 	return output.String()
 }
 
+func captureMonitorStdout(t *testing.T, run func()) string {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := os.Stdout
+	os.Stdout = writer
+	defer func() {
+		os.Stdout = previous
+		_ = reader.Close()
+		_ = writer.Close()
+	}()
+
+	run()
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	output, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(output)
+}
+
+func TestPrintLabelSummaryIncludesRelationshipCounters(t *testing.T) {
+	mon := NewMonitor(MonitorOptions{})
+	output := captureMonitorStdout(t, func() {
+		mon.PrintLabelSummary(&LabelStats{
+			RelationshipChecks:    3,
+			RelationshipCacheHits: 1,
+			RelationshipFailures:  1,
+			Warnings:              1,
+		}, time.Second)
+	})
+
+	for _, expected := range []string{
+		"Compilation relationship checks: 3",
+		"Compilation relationship cache hits: 1",
+		"Compilation relationship failures: 1",
+		"Warnings: 1",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Errorf("summary missing %q:\n%s", expected, output)
+		}
+	}
+}
+
 type fakeLabelMBClient struct {
 	results        map[string]musicbrainz.LabelBrowseResult
+	errors         map[string]error
 	vaSources      map[string]string
 	vaErrors       map[string]error
 	vaCalls        int
@@ -154,7 +206,70 @@ type fakeLabelMBClient struct {
 }
 
 func (f *fakeLabelMBClient) LabelReleaseGroups(labelID string) (musicbrainz.LabelBrowseResult, error) {
+	if err := f.errors[labelID]; err != nil {
+		return musicbrainz.LabelBrowseResult{}, err
+	}
 	return f.results[labelID], nil
+}
+
+func TestPlanLabelsContinuesAfterOneLabelFails(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.lookups["rg-success"] = []lidarr.Album{
+		lookupAlbum("rg-success", "Album", "artist-success"),
+	}
+	client := &fakeMonitorClient{countingCatalogClient: catalog}
+	mb := &fakeLabelMBClient{
+		errors: map[string]error{"failed": errors.New("browse failed")},
+		results: map[string]musicbrainz.LabelBrowseResult{
+			"success": {Groups: []musicbrainz.LabelReleaseGroup{
+				labelGroup("rg-success", "Album", "artist-success", "recording-success"),
+			}},
+		},
+	}
+
+	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(LabelOptions{
+		IDs:            []string{"failed", "success"},
+		MissingArtists: config.MissingArtistsConfig{Enabled: true},
+		Policy:         testSelectionPolicy(true),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Stats.LabelsProcessed != 1 || plan.Stats.Failures != 1 || len(plan.Selected) != 1 {
+		t.Fatalf("unexpected plan: %#v", plan)
+	}
+}
+
+func TestPlanLabelsFailsWhenEveryLabelFails(t *testing.T) {
+	client := &fakeMonitorClient{countingCatalogClient: newCountingCatalogClient()}
+	mb := &fakeLabelMBClient{errors: map[string]error{
+		"first":  errors.New("first failed"),
+		"second": errors.New("second failed"),
+	}}
+
+	_, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(LabelOptions{
+		IDs: []string{"first", "second"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "all 2 MusicBrainz label lookups failed") {
+		t.Fatalf("expected all-label failure, got %v", err)
+	}
+}
+
+func TestPlanLabelsSuccessfulEmptyLabelIsNotFailure(t *testing.T) {
+	client := &fakeMonitorClient{countingCatalogClient: newCountingCatalogClient()}
+	mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+		"empty": {},
+	}}
+
+	plan, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).PlanLabels(LabelOptions{
+		IDs: []string{"empty"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Stats.LabelsProcessed != 1 || plan.Stats.Failures != 0 {
+		t.Fatalf("unexpected plan: %#v", plan)
+	}
 }
 
 func (f *fakeLabelMBClient) VACompilationSource(releaseGroupID string) (string, error) {
@@ -803,6 +918,74 @@ func TestRunLabelsExistingArtistPayloadPreservesSettings(t *testing.T) {
 		got.MetadataProfileID != existing.MetadataProfileID ||
 		got.AddOptions != nil {
 		t.Fatalf("existing artist settings were not preserved: %#v", got)
+	}
+}
+
+func TestRunLabelsReturnsAddAlbumFailure(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.artists = []lidarr.Artist{{
+		ID:         1,
+		ArtistName: "Existing Artist",
+		ForeignID:  "existing-artist",
+	}}
+	catalog.lookups["rg-new"] = []lidarr.Album{
+		lookupAlbum("rg-new", "Album", "existing-artist"),
+	}
+	client := &fakeMonitorClient{
+		countingCatalogClient: catalog,
+		addErr:                errors.New("add failed"),
+	}
+	mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+		"label": {Groups: []musicbrainz.LabelReleaseGroup{
+			labelGroup("rg-new", "Album", "existing-artist", "recording-new"),
+		}},
+	}}
+
+	stats, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).RunLabels(
+		LabelOptions{IDs: []string{"label"}},
+	)
+	if err == nil || !strings.Contains(err.Error(), "rg-new") || !strings.Contains(err.Error(), "add failed") {
+		t.Fatalf("expected contextual add failure, got %v", err)
+	}
+	if stats == nil || stats.AlbumsAdded != 0 || stats.ArtistsAdded != 0 ||
+		len(client.monitorCalls) != 0 || len(client.searchCalls) != 0 {
+		t.Fatalf("add failure recorded false success: stats=%#v monitor=%v search=%v", stats, client.monitorCalls, client.searchCalls)
+	}
+}
+
+func TestRunLabelsReturnsBatchApplyFailure(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.artists = []lidarr.Artist{{
+		ID:         1,
+		ArtistName: "Existing Artist",
+		ForeignID:  "existing-artist",
+	}}
+	catalog.albumsByArtist[1] = []lidarr.Album{{
+		ID:             10,
+		ArtistID:       1,
+		Artist:         &catalog.artists[0],
+		Title:          "Existing Album",
+		AlbumType:      "Album",
+		ForeignAlbumID: "rg-existing",
+	}}
+	client := &fakeMonitorClient{
+		countingCatalogClient: catalog,
+		monitorErr:            errors.New("monitor failed"),
+	}
+	mb := &fakeLabelMBClient{results: map[string]musicbrainz.LabelBrowseResult{
+		"label": {Groups: []musicbrainz.LabelReleaseGroup{
+			labelGroup("rg-existing", "Album", "existing-artist", "recording-existing"),
+		}},
+	}}
+
+	_, err := NewMonitor(MonitorOptions{Client: client, MBClient: mb}).RunLabels(
+		LabelOptions{IDs: []string{"label"}},
+	)
+	if err == nil || !strings.Contains(err.Error(), "monitor failed") {
+		t.Fatalf("expected monitor failure, got %v", err)
+	}
+	if len(client.searchCalls) != 0 {
+		t.Fatalf("monitor failure should not submit a search: %v", client.searchCalls)
 	}
 }
 

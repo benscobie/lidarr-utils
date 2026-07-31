@@ -18,11 +18,13 @@ type fakeMonitorClient struct {
 	monitorCalls [][]int
 	searchCalls  [][]int
 	nextAlbumID  int
+	addErr       error
+	monitorErr   error
 }
 
 func (f *fakeMonitorClient) MonitorAlbums(ids []int) error {
 	f.monitorCalls = append(f.monitorCalls, append([]int(nil), ids...))
-	return nil
+	return f.monitorErr
 }
 
 func (f *fakeMonitorClient) SearchAlbum(ids []int) error {
@@ -32,6 +34,9 @@ func (f *fakeMonitorClient) SearchAlbum(ids []int) error {
 
 func (f *fakeMonitorClient) AddAlbum(album lidarr.Album) (*lidarr.Album, error) {
 	f.addRequests = append(f.addRequests, album)
+	if f.addErr != nil {
+		return nil, f.addErr
+	}
 	f.nextAlbumID++
 	album.ID = f.nextAlbumID
 	if album.Artist != nil {

@@ -64,7 +64,10 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 		return plan, fmt.Errorf("MusicBrainz client is required for label monitoring")
 	}
 
-	groups, groupOrder := m.discoverLabelGroups(opts.IDs, &plan.Stats)
+	groups, groupOrder, err := m.discoverLabelGroups(opts.IDs, &plan.Stats)
+	if err != nil {
+		return plan, err
+	}
 	plan.Stats.GroupsDiscovered = len(groupOrder)
 	if len(groupOrder) == 0 {
 		return plan, nil
@@ -432,17 +435,11 @@ func (m *Monitor) RunLabels(opts LabelOptions) (*LabelStats, error) {
 		created, err := m.opts.Client.AddAlbum(request)
 		if err != nil {
 			stats.Failures++
-			log.Printf(
-				"ERROR: Failed to add %s; Lidarr may have created its artist: %v",
-				planned.Album.Title,
-				err,
-			)
-			continue
+			return &stats, fmt.Errorf("failed to add label album %q: %w", planned.Album.Title, err)
 		}
 		if created == nil || created.ID <= 0 {
 			stats.Failures++
-			log.Printf("ERROR: Lidarr returned no album ID after adding %s", planned.Album.Title)
-			continue
+			return &stats, fmt.Errorf("Lidarr returned no album ID after adding label album %q", planned.Album.Title)
 		}
 
 		applied := planned.Album
@@ -467,7 +464,7 @@ func (m *Monitor) RunLabels(opts LabelOptions) (*LabelStats, error) {
 
 	applyStats, err := applyAlbums(m.opts.Client, m.opts.State, dryRun, albumsToApply)
 	if err != nil {
-		return &stats, err
+		return &stats, fmt.Errorf("failed to apply label albums: %w", err)
 	}
 	stats.AlbumsMonitored = applyStats.AlbumsMonitored
 	stats.SearchesSubmitted = applyStats.SearchesSubmitted
@@ -543,13 +540,13 @@ func (m *Monitor) PrintLabelSummary(stats *LabelStats, duration time.Duration) {
 		fmt.Printf("Searches submitted: %d\n", stats.SearchesSubmitted)
 	}
 	if stats.RelationshipChecks > 0 {
-		fmt.Printf("Relationship checks: %d\n", stats.RelationshipChecks)
+		fmt.Printf("Compilation relationship checks: %d\n", stats.RelationshipChecks)
 	}
 	if stats.RelationshipCacheHits > 0 {
-		fmt.Printf("Relationship cache hits: %d\n", stats.RelationshipCacheHits)
+		fmt.Printf("Compilation relationship cache hits: %d\n", stats.RelationshipCacheHits)
 	}
 	if stats.RelationshipFailures > 0 {
-		fmt.Printf("Relationship failures: %d\n", stats.RelationshipFailures)
+		fmt.Printf("Compilation relationship failures: %d\n", stats.RelationshipFailures)
 	}
 	if stats.Warnings > 0 {
 		fmt.Printf("Warnings: %d\n", stats.Warnings)
@@ -560,10 +557,11 @@ func (m *Monitor) PrintLabelSummary(stats *LabelStats, duration time.Duration) {
 func (m *Monitor) discoverLabelGroups(
 	labelIDs []string,
 	stats *LabelStats,
-) (map[string]musicbrainz.LabelReleaseGroup, []string) {
+) (map[string]musicbrainz.LabelReleaseGroup, []string, error) {
 	groups := make(map[string]musicbrainz.LabelReleaseGroup)
 	var groupOrder []string
 	seenLabels := make(map[string]struct{}, len(labelIDs))
+	attempted := 0
 	for _, rawID := range labelIDs {
 		labelID := strings.ToLower(strings.TrimSpace(rawID))
 		if labelID == "" {
@@ -573,6 +571,7 @@ func (m *Monitor) discoverLabelGroups(
 			continue
 		}
 		seenLabels[labelID] = struct{}{}
+		attempted++
 
 		result, err := m.opts.MBClient.LabelReleaseGroups(labelID)
 		if err != nil {
@@ -598,7 +597,13 @@ func (m *Monitor) discoverLabelGroups(
 			groupOrder = append(groupOrder, group.ID)
 		}
 	}
-	return groups, groupOrder
+	if attempted > 0 && stats.LabelsProcessed == 0 {
+		return groups, groupOrder, fmt.Errorf(
+			"all %d MusicBrainz label lookups failed",
+			attempted,
+		)
+	}
+	return groups, groupOrder, nil
 }
 
 func albumFromLabelGroup(group musicbrainz.LabelReleaseGroup) common.Album {
