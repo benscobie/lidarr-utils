@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -52,13 +52,13 @@ func monitorRuntime(cfg *config.Config) (*lidarr.Client, *state.State, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load state: %w", err)
 	}
-	log.Printf("Loaded state: %d previously monitored albums", len(st.MonitoredAlbums))
+	slog.Debug("Loaded state", "previously_monitored_albums", len(st.MonitoredAlbums))
 
 	client := lidarr.NewClient(cfg.Lidarr.URL, cfg.Lidarr.APIKey)
-	log.Println("Testing connection to Lidarr...")
+	slog.Debug("Testing connection to Lidarr")
 	if err := client.TestConnection(); err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to Lidarr: %w", err)
 	}
-	log.Println("Successfully connected to Lidarr")
+	slog.Debug("Successfully connected to Lidarr")
 	return client, st, nil
 }

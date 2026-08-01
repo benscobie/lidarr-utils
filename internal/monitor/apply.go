@@ -2,7 +2,7 @@ package monitor
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/benscobie/lidarr-utils/internal/common"
@@ -39,19 +39,15 @@ func applyAlbums(
 	albums, userSkipped = filterUserUnmonitored(albums, st)
 	stats.UserUnmonitored = len(userSkipped)
 	for _, album := range userSkipped {
-		log.Printf(
-			"  Skipping %s - %s — previously unmonitored by user",
-			album.ArtistName,
-			album.Title,
-		)
+		slog.Debug("Skipping album previously unmonitored by user", "artist", album.ArtistName, "album", album.Title)
 	}
 	if len(albums) == 0 {
-		log.Println("No albums to monitor or search")
+		slog.Info("No albums to monitor or search")
 		return stats, nil
 	}
 
 	if dryRun {
-		log.Printf("[DRY RUN] Would monitor and search %d existing albums", len(albums))
+		slog.Info("[DRY RUN] Would monitor and search existing albums", "albums", len(albums))
 		stats.AlbumsMonitored = len(albums)
 		stats.SearchesSubmitted = len(albums)
 		return stats, nil
@@ -65,14 +61,14 @@ func applyAlbums(
 		return stats, fmt.Errorf("failed to monitor albums: %w", err)
 	}
 	stats.AlbumsMonitored = len(albumIDs)
-	log.Printf("Monitored %d albums", len(albumIDs))
+	slog.Info("Monitored albums", "albums", len(albumIDs))
 
 	if st != nil {
 		for _, album := range albums {
 			st.RecordAlbum(album.ID, album.ArtistName, album.Title)
 		}
 		if err := st.Save(); err != nil {
-			log.Printf("WARNING: failed to save state file: %v", err)
+			slog.Warn("Failed to save state file", "error", err)
 		}
 	}
 
@@ -80,7 +76,7 @@ func applyAlbums(
 		return stats, fmt.Errorf("failed to search albums: %w", err)
 	}
 	stats.SearchesSubmitted = len(albumIDs)
-	log.Printf("Submitted search for %d albums", len(albumIDs))
+	slog.Info("Submitted album search", "albums", len(albumIDs))
 	return stats, nil
 }
 

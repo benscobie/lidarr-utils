@@ -71,6 +71,49 @@ func TestLoadConfigDefaultsBothSelectionPolicies(t *testing.T) {
 	}
 }
 
+func TestLoadConfigDefaultsLogLevel(t *testing.T) {
+	cfg, err := LoadConfig(writeConfig(t, validMinimalYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.App.LogLevel != "info" {
+		t.Fatalf("app.log_level = %q, want info", cfg.App.LogLevel)
+	}
+}
+
+func TestLoadConfigNormalizesLogLevel(t *testing.T) {
+	cfg, err := LoadConfig(writeConfig(t, `
+lidarr:
+  url: http://lidarr:8686
+  api_key: secret
+app:
+  log_level: " WARN "
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.App.LogLevel != "warn" {
+		t.Fatalf("app.log_level = %q, want warn", cfg.App.LogLevel)
+	}
+}
+
+func TestLoadConfigRejectsInvalidLogLevel(t *testing.T) {
+	_, err := LoadConfig(writeConfig(t, `
+lidarr:
+  url: http://lidarr:8686
+  api_key: secret
+app:
+  log_level: verbose
+`))
+	if err == nil {
+		t.Fatal("LoadConfig accepted an invalid app.log_level")
+	}
+	want := `app.log_level has invalid value "verbose"; accepted values: debug, info, warn, error`
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err, want)
+	}
+}
+
 func TestLoadConfigBindsSelectionEnvironment(t *testing.T) {
 	t.Setenv("LIDARR_UTILS_MONITOR_ARTISTS_SELECTION_EXCLUDE_SECONDARY_TYPES", "Live,Compilation")
 	t.Setenv("LIDARR_UTILS_MONITOR_LABELS_SELECTION_VARIOUS_ARTISTS", "only")

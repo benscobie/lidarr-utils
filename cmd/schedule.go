@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -56,7 +56,7 @@ func runSchedule(parent context.Context, cfg *config.Config) error {
 	ctx, stopSignals := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 
-	runner := scheduler.NewRunner(log.Default())
+	runner := scheduler.NewRunner(slog.Default())
 	runnerDone := make(chan struct{})
 	go func() {
 		runner.Run(ctx)
@@ -68,7 +68,7 @@ func runSchedule(parent context.Context, cfg *config.Config) error {
 		entry := entry
 		cronRunner.Schedule(entry.schedule, cron.FuncJob(func() {
 			if !runner.Enqueue(entry.job) {
-				log.Printf("Scheduled job %s is already pending; coalescing trigger", entry.job.Name)
+				slog.Debug("Scheduled job is already pending; coalescing trigger", "job", entry.job.Name)
 			}
 		}))
 	}
@@ -76,13 +76,13 @@ func runSchedule(parent context.Context, cfg *config.Config) error {
 
 	for _, entry := range parsed {
 		if entry.job.Schedule.RunOnStart && !runner.Enqueue(entry.job) {
-			log.Printf("Scheduled job %s was already pending at startup", entry.job.Name)
+			slog.Debug("Scheduled job was already pending at startup", "job", entry.job.Name)
 		}
 	}
 
-	log.Printf("Scheduler started with %d enabled job(s)", len(parsed))
+	slog.Info("Scheduler started", "enabled_jobs", len(parsed))
 	<-ctx.Done()
-	log.Println("Scheduler stopping")
+	slog.Info("Scheduler stopping")
 	cronStopped := cronRunner.Stop()
 	<-cronStopped.Done()
 	<-runnerDone

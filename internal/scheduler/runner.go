@@ -2,7 +2,7 @@ package scheduler
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/benscobie/lidarr-utils/internal/config"
@@ -15,7 +15,7 @@ type Job struct {
 }
 
 type Runner struct {
-	logger *log.Logger
+	logger *slog.Logger
 
 	mu          sync.Mutex
 	accepting   bool
@@ -24,9 +24,9 @@ type Runner struct {
 	commands    chan Job
 }
 
-func NewRunner(logger *log.Logger) *Runner {
+func NewRunner(logger *slog.Logger) *Runner {
 	if logger == nil {
-		logger = log.Default()
+		logger = slog.Default()
 	}
 	return &Runner{
 		logger:    logger,
@@ -108,7 +108,7 @@ func (r *Runner) Run(ctx context.Context) {
 			job := queue[0]
 			queue = queue[1:]
 			active = true
-			r.logger.Printf("Starting scheduled job %s", job.Name)
+			r.logger.Info("Starting scheduled job", "job", job.Name)
 			go func() {
 				completed <- jobResult{job: job, err: job.Run()}
 			}()
@@ -131,9 +131,9 @@ func (r *Runner) Run(ctx context.Context) {
 			active = false
 			r.clearPending(result.job.Name)
 			if result.err != nil {
-				r.logger.Printf("Scheduled job %s failed: %v", result.job.Name, result.err)
+				r.logger.Error("Scheduled job failed", "job", result.job.Name, "error", result.err)
 			} else {
-				r.logger.Printf("Scheduled job %s completed", result.job.Name)
+				r.logger.Info("Scheduled job completed", "job", result.job.Name)
 			}
 
 		case <-cancelled:

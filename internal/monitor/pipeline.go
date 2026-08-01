@@ -2,7 +2,7 @@ package monitor
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -78,7 +78,7 @@ func (m *Monitor) RunArtists(artistRefs []string) (*Stats, error) {
 	for _, artist := range resolved {
 		albums, err := cache.AlbumsForArtist(artist.ID)
 		if err != nil {
-			log.Printf("ERROR: Failed to get albums for %s: %v", artist.ArtistName, err)
+			slog.Error("Failed to get albums for artist", "artist", artist.ArtistName, "error", err)
 			continue
 		}
 		catalogs = append(catalogs, artistCatalog{artist: artist, albums: albums})
@@ -154,16 +154,12 @@ func (m *Monitor) runArtistCatalogs(catalogs []artistCatalog, cache *CatalogCach
 	}
 
 	for i, catalog := range catalogs {
-		log.Printf(
-			"Processing artist %d/%d: %s",
-			i+1,
-			len(catalogs),
-			catalog.artist.ArtistName,
-		)
+		slog.Debug("Processing artist", "position", i+1, "total", len(catalogs),
+			"artist", catalog.artist.ArtistName)
 
 		result, err := m.processArtist(catalog.artist, catalog.albums, cache, classifier)
 		if err != nil {
-			log.Printf("ERROR: Failed to process artist %s: %v", catalog.artist.ArtistName, err)
+			slog.Error("Failed to process artist", "artist", catalog.artist.ArtistName, "error", err)
 			continue
 		}
 
@@ -178,7 +174,7 @@ func (m *Monitor) runArtistCatalogs(catalogs []artistCatalog, cache *CatalogCach
 			default:
 				stats.SinglesSelected++
 			}
-			log.Printf("  Selected: %s (%s)", album.Title, album.AlbumType)
+			slog.Debug("Selected release", "album", album.Title, "type", album.AlbumType)
 		}
 		for _, skipped := range result.Skipped {
 			if common.IsEP(skipped.Album) {

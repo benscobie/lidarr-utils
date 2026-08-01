@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/benscobie/lidarr-utils/internal/logging"
 	"github.com/spf13/viper"
 )
 
@@ -177,6 +178,11 @@ func LoadConfig(configPath string) (*Config, error) {
 	if err := v.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("unable to decode config: %w", err)
 	}
+	logLevel, err := logging.ParseLevel(config.App.LogLevel)
+	if err != nil {
+		return nil, fmt.Errorf("app.log_level has %w", err)
+	}
+	config.App.LogLevel = string(logLevel)
 	normalizedIDs, err := NormalizeLabelIDs(config.Monitor.Labels.IDs)
 	if err != nil {
 		return nil, err
