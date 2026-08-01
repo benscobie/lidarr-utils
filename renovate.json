@@ -3,10 +3,11 @@
   "extends": [
     "config:best-practices",
     ":automergeLinters",
-    ":timezone(Europe/London)",
-    ":reviewer(ben)"
+    ":timezone(Europe/London)"
   ],
   "automergeType": "branch",
+  "platformAutomerge": false,
+  "rebaseWhen": "behind-base-branch",
   "automergeStrategy": "squash",
   "branchPrefix": "renovate-",
   "digest": {
