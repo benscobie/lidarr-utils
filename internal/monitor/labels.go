@@ -3,7 +3,7 @@ package monitor
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -112,12 +112,12 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			len(creditIDs) > 0 &&
 			len(creditedExisting) == 0 {
 			plan.Stats.MissingArtistSkipped++
-			log.Printf(
+			slog.Debug(fmt.Sprintf(
 				"  Skip: %s - %s (%s) — artist is not in Lidarr and monitor.labels.missing_artists.enabled is false",
 				groupAlbum.ArtistName,
 				groupAlbum.Title,
 				groupAlbum.AlbumType,
-			)
+			))
 			continue
 		}
 
@@ -129,7 +129,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			albums, err := cache.AlbumsForArtist(artist.ID)
 			if err != nil {
 				plan.Stats.Failures++
-				log.Printf("ERROR: Failed to get albums for %s: %v", artist.ArtistName, err)
+				slog.Error(fmt.Sprintf("Failed to get albums for %s: %v", artist.ArtistName, err))
 				continue
 			}
 			if album, ok := albumByForeignID(albums, group.ID); ok {
@@ -152,13 +152,13 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			lookups, err := cache.LookupAlbum(group.ID)
 			if err != nil {
 				plan.Stats.Failures++
-				log.Printf("ERROR: Failed to look up release group %s: %v", group.ID, err)
+				slog.Error(fmt.Sprintf("Failed to look up release group %s: %v", group.ID, err))
 				continue
 			}
 			exact, ok := exactLookup(lookups, group.ID)
 			if !ok {
 				plan.Stats.Failures++
-				log.Printf("ERROR: Lidarr lookup was not exact for release group %s", group.ID)
+				slog.Error(fmt.Sprintf("Lidarr lookup was not exact for release group %s", group.ID))
 				continue
 			}
 
@@ -171,17 +171,17 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			}
 			if candidate.ownerForeignID == "" {
 				plan.Stats.Failures++
-				log.Printf("ERROR: Lidarr lookup did not identify an artist for %s", group.ID)
+				slog.Error(fmt.Sprintf("Lidarr lookup did not identify an artist for %s", group.ID))
 				continue
 			}
 			if !candidate.artistExists && !opts.MissingArtists.Enabled {
 				plan.Stats.MissingArtistSkipped++
-				log.Printf(
+				slog.Debug(fmt.Sprintf(
 					"  Skip: %s - %s (%s) — artist is not in Lidarr and monitor.labels.missing_artists.enabled is false",
 					candidate.album.ArtistName,
 					candidate.album.Title,
 					candidate.album.AlbumType,
-				)
+				))
 				continue
 			}
 
@@ -197,7 +197,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 
 		if candidate.ownerForeignID == "" {
 			plan.Stats.Failures++
-			log.Printf("ERROR: Could not determine catalogue owner for %s", group.ID)
+			slog.Error(fmt.Sprintf("Could not determine catalogue owner for %s", group.ID))
 			continue
 		}
 		candidate.album.IsVariousArtists = candidate.ownerForeignID == musicbrainz.VariousArtistsID
@@ -238,12 +238,12 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 				}
 			}
 		}
-		log.Printf(
+		slog.Debug(fmt.Sprintf(
 			"Processing label artist %d/%d: %s",
 			ownerIndex+1,
 			len(bucketOrder),
 			artistName,
-		)
+		))
 
 		var catalogue []common.Album
 		var catalogueWarnings []string
@@ -251,7 +251,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			raw, err := cache.AlbumsForArtist(owner.ID)
 			if err != nil {
 				plan.Stats.Failures += len(candidateIDs)
-				log.Printf("ERROR: Failed to get albums for %s: %v", owner.ArtistName, err)
+				slog.Error(fmt.Sprintf("Failed to get albums for %s: %v", owner.ArtistName, err))
 				continue
 			}
 			catalogue, catalogueWarnings = prepareLidarrCatalogue(
@@ -286,7 +286,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 		for _, album := range catalogue {
 			if _, candidate := candidateSet[album.ForeignAlbumID]; candidate && album.Monitored {
 				plan.Stats.AlreadyMonitored++
-				log.Printf("  Already monitored: %s (%s)", album.Title, album.AlbumType)
+				slog.Debug(fmt.Sprintf("  Already monitored: %s (%s)", album.Title, album.AlbumType))
 			}
 		}
 
@@ -307,23 +307,23 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			candidate := resolved[album.ForeignAlbumID]
 			switch {
 			case candidate.lookup == nil:
-				log.Printf(
+				slog.Debug(fmt.Sprintf(
 					"  Selected existing album: %s (%s)",
 					album.Title,
 					album.AlbumType,
-				)
+				))
 			case !candidate.artistExists:
-				log.Printf(
+				slog.Debug(fmt.Sprintf(
 					"  Selected album to add: %s (%s) — missing artist will be added",
 					album.Title,
 					album.AlbumType,
-				)
+				))
 			default:
-				log.Printf(
+				slog.Debug(fmt.Sprintf(
 					"  Selected album to add: %s (%s)",
 					album.Title,
 					album.AlbumType,
-				)
+				))
 			}
 			plan.Selected = append(plan.Selected, PlannedLabelAlbum{
 				Album:          album,
@@ -341,13 +341,11 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 		plan.Stats.Failures += classifierStats.Failures
 	}
 	if plan.Stats.GroupsDiscovered > 0 && len(plan.Selected) == 0 {
-		log.Printf(
-			"No label albums selected: filtered=%d coverage_skipped=%d missing_owner_skipped=%d already_monitored=%d",
-			plan.Stats.GroupsFiltered,
-			plan.Stats.GroupsCoverageSkipped,
-			plan.Stats.MissingArtistSkipped,
-			plan.Stats.AlreadyMonitored,
-		)
+		slog.Info("No label albums selected",
+			"filtered", plan.Stats.GroupsFiltered,
+			"coverage_skipped", plan.Stats.GroupsCoverageSkipped,
+			"missing_owner_skipped", plan.Stats.MissingArtistSkipped,
+			"already_monitored", plan.Stats.AlreadyMonitored)
 	}
 
 	return plan, nil
@@ -389,10 +387,7 @@ func (m *Monitor) RunLabels(opts LabelOptions) (*LabelStats, error) {
 		ownerID := planned.OwnerForeignID
 		if !planned.ArtistExists && !opts.MissingArtists.Enabled {
 			stats.Failures++
-			log.Printf(
-				"ERROR: Refusing to add %s because its artist is missing",
-				planned.Album.Title,
-			)
+			slog.Error("Refusing to add album because its artist is missing", "album", planned.Album.Title)
 			continue
 		}
 
@@ -414,10 +409,7 @@ func (m *Monitor) RunLabels(opts LabelOptions) (*LabelStats, error) {
 		if planned.ArtistExists {
 			if request.Artist == nil {
 				stats.Failures++
-				log.Printf(
-					"ERROR: Existing artist payload is missing for %s",
-					planned.Album.Title,
-				)
+				slog.Error("Existing artist payload is missing for album", "album", planned.Album.Title)
 				continue
 			}
 			request.Artist.AddOptions = nil
@@ -567,9 +559,9 @@ func (m *Monitor) discoverLabelGroups(
 		if err != nil {
 			stats.Failures++
 			if errors.Is(err, musicbrainz.ErrLabelNotFound) {
-				log.Printf("ERROR: MusicBrainz label %s was not found", labelID)
+				slog.Error("MusicBrainz label was not found", "label", labelID)
 			} else {
-				log.Printf("ERROR: Failed to browse MusicBrainz label %s: %v", labelID, err)
+				slog.Error("Failed to browse MusicBrainz label", "label", labelID, "error", err)
 			}
 			continue
 		}

@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -42,18 +42,18 @@ func runDedupe(cmd *cobra.Command, args []string) error {
 func runDedupeJob(cfg *config.Config) error {
 	client := lidarr.NewClient(cfg.Lidarr.URL, cfg.Lidarr.APIKey)
 
-	log.Println("Testing connection to Lidarr...")
+	slog.Debug("Testing connection to Lidarr")
 	if err := client.TestConnection(); err != nil {
 		return fmt.Errorf("failed to connect to Lidarr: %w", err)
 	}
-	log.Println("Successfully connected to Lidarr")
+	slog.Debug("Successfully connected to Lidarr")
 
 	deduper := dedupe.NewDeduper(client, cfg.App.DryRun, cfg.Dedupe.AddImportExclusion)
 	return runDedupeOnce(deduper)
 }
 
 func runDedupeOnce(deduper *dedupe.Deduper) error {
-	log.Println("Starting single deduplication run...")
+	slog.Info("Starting single deduplication run")
 
 	start := time.Now()
 
@@ -71,7 +71,7 @@ func runDedupeOnce(deduper *dedupe.Deduper) error {
 	deduper.PrintSummary(duplicates)
 
 	duration := time.Since(start)
-	log.Printf("Deduplication completed in %v", duration)
+	slog.Info("Deduplication completed", "duration", duration)
 
 	return nil
 }

@@ -2,7 +2,7 @@ package dedupe
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -31,23 +31,23 @@ func NewDeduper(client *lidarr.Client, dryRun bool, addImportExclusion bool) *De
 }
 
 func (d *Deduper) FindDuplicates() ([]DuplicateResult, error) {
-	log.Println("Starting duplicate detection...")
+	slog.Info("Starting duplicate detection")
 
 	artists, err := d.client.GetArtists()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get artists: %w", err)
 	}
 
-	log.Printf("Found %d artists", len(artists))
+	slog.Debug("Loaded artists for duplicate detection", "artists", len(artists))
 
 	var allDuplicates []DuplicateResult
 
 	for i, artist := range artists {
-		log.Printf("Processing artist %d/%d: %s", i+1, len(artists), artist.ArtistName)
+		slog.Debug("Processing artist", "position", i+1, "total", len(artists), "artist", artist.ArtistName)
 
 		duplicates, err := d.findDuplicatesForArtist(artist.ID, artist.ArtistName)
 		if err != nil {
-			log.Printf("Error processing artist %s: %v", artist.ArtistName, err)
+			slog.Error("Failed to process artist", "artist", artist.ArtistName, "error", err)
 			continue
 		}
 
@@ -57,7 +57,7 @@ func (d *Deduper) FindDuplicates() ([]DuplicateResult, error) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	log.Printf("Found %d duplicate singles", len(allDuplicates))
+	slog.Info("Duplicate detection completed", "duplicate_singles", len(allDuplicates))
 	return allDuplicates, nil
 }
 
@@ -72,7 +72,7 @@ func (d *Deduper) findDuplicatesForArtist(artistID int, artistName string) ([]Du
 	for _, album := range albums {
 		tracks, err := d.client.GetTracksByAlbum(album.ID)
 		if err != nil {
-			log.Printf("Warning: failed to get tracks for album %s: %v", album.Title, err)
+			slog.Warn("Failed to get tracks for album", "album", album.Title, "error", err)
 			continue
 		}
 
@@ -101,7 +101,7 @@ func (d *Deduper) findDuplicatesForArtist(artistID int, artistName string) ([]Du
 		}
 	}
 
-	log.Printf("Artist %s has %d albums with downloaded files", artistName, len(processedAlbums))
+	slog.Debug("Loaded downloaded albums for artist", "artist", artistName, "albums", len(processedAlbums))
 
 	// Find singles and check for duplicates
 	var duplicates []DuplicateResult
@@ -207,41 +207,41 @@ func (d *Deduper) findSingleInOtherAlbums(single common.Album, allAlbums []commo
 
 func (d *Deduper) ProcessDuplicates(duplicates []DuplicateResult) error {
 	if len(duplicates) == 0 {
-		log.Println("No duplicates to process")
+		slog.Info("No duplicates to process")
 		return nil
 	}
 
-	log.Printf("Processing %d duplicate singles...", len(duplicates))
+	slog.Info("Processing duplicate singles", "duplicates", len(duplicates))
 
 	for i, duplicate := range duplicates {
-		log.Printf("Processing duplicate %d/%d: '%s' by %s",
-			i+1, len(duplicates), duplicate.SingleAlbum.Title, duplicate.SingleAlbum.ArtistName)
-		log.Printf("  Reason: %s", duplicate.Reason)
+		slog.Debug("Processing duplicate", "position", i+1, "total", len(duplicates),
+			"album", duplicate.SingleAlbum.Title, "artist", duplicate.SingleAlbum.ArtistName,
+			"reason", duplicate.Reason)
 
 		if d.dryRun {
-			log.Printf("  [DRY RUN] Would unmonitor and delete files for single: %s", duplicate.SingleAlbum.Title)
+			slog.Info("[DRY RUN] Would unmonitor and delete files for single", "album", duplicate.SingleAlbum.Title)
 			if d.addImportExclusion {
-				log.Printf("  [DRY RUN] Would add to import exclusion list")
+				slog.Info("[DRY RUN] Would add single to import exclusion list", "album", duplicate.SingleAlbum.Title)
 			}
 		} else {
-			log.Printf("  Unmonitoring and deleting files for single: %s", duplicate.SingleAlbum.Title)
+			slog.Info("Unmonitoring and deleting files for single", "album", duplicate.SingleAlbum.Title)
 
 			// Unmonitor and delete files
 			err := d.client.UnmonitorAndDeleteFiles(duplicate.SingleAlbum.ID)
 			if err != nil {
-				log.Printf("  ERROR: Failed to unmonitor and delete files: %v", err)
+				slog.Error("Failed to unmonitor and delete files", "album", duplicate.SingleAlbum.Title, "error", err)
 				continue
 			}
 
-			log.Printf("  Successfully unmonitored and deleted files")
+			slog.Info("Successfully unmonitored and deleted files", "album", duplicate.SingleAlbum.Title)
 
 			// Add to import exclusion if requested
 			if d.addImportExclusion {
 				err := d.client.AddToImportExclusion(duplicate.SingleAlbum.ID)
 				if err != nil {
-					log.Printf("  WARNING: Failed to add to import exclusion list: %v", err)
+					slog.Warn("Failed to add single to import exclusion list", "album", duplicate.SingleAlbum.Title, "error", err)
 				} else {
-					log.Printf("  Added to import exclusion list")
+					slog.Info("Added single to import exclusion list", "album", duplicate.SingleAlbum.Title)
 				}
 			}
 		}

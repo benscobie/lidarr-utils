@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/benscobie/lidarr-utils/internal/config"
+	appLogging "github.com/benscobie/lidarr-utils/internal/logging"
 )
 
 var (
@@ -57,7 +59,7 @@ func getConfig(cmd *cobra.Command) (*config.Config, error) {
 	return cfg, nil
 }
 
-func setupLogging(logFilePath string) (*os.File, error) {
+func setupLogging(logFilePath string, logLevel appLogging.Level) (*os.File, error) {
 	// Create the directory if it doesn't exist
 	if err := os.MkdirAll(filepath.Dir(logFilePath), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
@@ -71,22 +73,26 @@ func setupLogging(logFilePath string) (*os.File, error) {
 
 	// Create a multi-writer that writes to both stdout and the log file
 	multiWriter := io.MultiWriter(os.Stdout, logFileHandle)
-	log.SetOutput(multiWriter)
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	slog.SetDefault(appLogging.New(multiWriter, logLevel))
 
 	return logFileHandle, nil
 }
 
 func setupLoggingFromConfig(cfg *config.Config) (*os.File, error) {
+	logLevel, err := appLogging.ParseLevel(cfg.App.LogLevel)
+	if err != nil {
+		return nil, fmt.Errorf("invalid configured log level: %w", err)
+	}
 	if cfg.App.LogFile == "" {
+		slog.SetDefault(appLogging.New(os.Stdout, logLevel))
 		return nil, nil
 	}
 
-	logFileHandle, err := setupLogging(cfg.App.LogFile)
+	logFileHandle, err := setupLogging(cfg.App.LogFile, logLevel)
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup logging: %w", err)
 	}
 
-	log.Printf("Logging to file: %s", cfg.App.LogFile)
+	slog.Info("Logging to file", "path", cfg.App.LogFile)
 	return logFileHandle, nil
 }

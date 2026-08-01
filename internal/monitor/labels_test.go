@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
@@ -114,7 +114,7 @@ func TestPlanLabelsLogsDetailedCandidateDecisions(t *testing.T) {
 	})
 
 	for _, expected := range []string{
-		`Exclude: Existing Artist - Live Release (Album) — excluded secondary type "Live"`,
+		`Exclude: Existing Artist - Live Release (Album) — excluded secondary type \"Live\"`,
 		"Processing label artist 1/2: Existing Artist",
 		"Selected existing album: Existing Album (Album)",
 		"Selected album to add: New Album (Album)",
@@ -132,17 +132,11 @@ func TestPlanLabelsLogsDetailedCandidateDecisions(t *testing.T) {
 func captureMonitorLogs(t *testing.T, run func()) string {
 	t.Helper()
 	var output bytes.Buffer
-	previousWriter := log.Writer()
-	previousFlags := log.Flags()
-	previousPrefix := log.Prefix()
-	log.SetOutput(&output)
-	log.SetFlags(0)
-	log.SetPrefix("")
-	defer func() {
-		log.SetOutput(previousWriter)
-		log.SetFlags(previousFlags)
-		log.SetPrefix(previousPrefix)
-	}()
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})))
+	defer slog.SetDefault(previous)
 
 	run()
 	return output.String()

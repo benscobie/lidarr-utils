@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -13,7 +13,7 @@ import (
 )
 
 func TestRunnerSerializesJobsAndCoalescesDuplicates(t *testing.T) {
-	runner := NewRunner(log.New(io.Discard, "", 0))
+	runner := NewRunner(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	runDone := make(chan struct{})
@@ -74,7 +74,7 @@ func TestRunnerSerializesJobsAndCoalescesDuplicates(t *testing.T) {
 }
 
 func TestRunnerContinuesAfterJobFailure(t *testing.T) {
-	runner := NewRunner(log.New(io.Discard, "", 0))
+	runner := NewRunner(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	runDone := make(chan struct{})
@@ -101,7 +101,7 @@ func TestRunnerContinuesAfterJobFailure(t *testing.T) {
 }
 
 func TestRunnerShutdownDropsQueuedJobsAndWaitsForActive(t *testing.T) {
-	runner := NewRunner(log.New(io.Discard, "", 0))
+	runner := NewRunner(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	ctx, cancel := context.WithCancel(context.Background())
 	runDone := make(chan struct{})
 	go func() {

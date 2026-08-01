@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -50,14 +50,14 @@ func Load(path string) (*State, error) {
 
 	var sf stateFile
 	if err := json.Unmarshal(data, &sf); err != nil {
-		log.Printf("WARNING: state file %s contains invalid JSON, starting with empty state: %v", path, err)
+		slog.Warn("State file contains invalid JSON; starting with empty state", "path", path, "error", err)
 		return s, nil
 	}
 
 	for k, v := range sf.MonitoredAlbums {
 		id, err := strconv.Atoi(k)
 		if err != nil {
-			log.Printf("WARNING: skipping non-integer album ID %q in state file", k)
+			slog.Warn("Skipping non-integer album ID in state file", "album_id", k, "path", path)
 			continue
 		}
 		s.MonitoredAlbums[id] = v
