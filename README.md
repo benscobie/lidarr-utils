@@ -202,6 +202,10 @@ lidarr-utils dedupe --add-import-exclusion
 lidarr-utils schedule
 ```
 
+A label MBID is the UUID at the end of its MusicBrainz label URL. For example,
+`musicbrainz.org/label/a5bfec28-ea8f-426d-ab23-e14aa692c9b5` has the label MBID
+`a5bfec28-ea8f-426d-ab23-e14aa692c9b5`.
+
 Global options include `--config`, `--dry-run`, and `--log-file`.
 
 ### Artist monitoring
@@ -328,7 +332,7 @@ to Lidarr's import exclusion list.
 
 ## Requirements
 
-- Go 1.26.3 or newer when building from source
+- A Go toolchain compatible with the version declared in [`go.mod`](go.mod) when building from source
 - Lidarr API access
 - MusicBrainz access for label discovery and optional compilation-relationship filtering
 
