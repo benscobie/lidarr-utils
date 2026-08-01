@@ -9,21 +9,52 @@
 
 ## Installation
 
-Download a binary from the releases page, or build from source:
+### Docker Compose
+
+Docker Compose is the recommended way to run `lidarr-utils`. The provided
+Compose file pulls a pre-built image from GitHub Container Registry; you do not
+need to clone the repository or build the image locally.
+
+```bash
+mkdir lidarr-utils && cd lidarr-utils
+curl -LO https://raw.githubusercontent.com/benscobie/lidarr-utils/main/docker-compose.yml
+mkdir config
+curl -L https://raw.githubusercontent.com/benscobie/lidarr-utils/main/config.example.yaml \
+  -o config/config.yaml
+```
+
+The Compose file tracks the latest stable release within the current major
+version. This receives compatible updates without automatically crossing a
+breaking major-version boundary. For a fully reproducible deployment, replace
+the major image tag with an exact [released version](https://github.com/benscobie/lidarr-utils/releases).
+
+Edit the environment, configuration, and command for your setup, then pull the
+image and start the service with:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+To run a one-off command instead of the configured service command:
+
+```bash
+docker compose run --rm lidarr-utils monitor labels --config=/app/config/config.yaml
+```
+
+### Pre-built binary
+
+Download the archive for your platform from the [releases page](https://github.com/benscobie/lidarr-utils/releases),
+extract it, and place `lidarr-utils` somewhere on your `PATH`.
+
+### Build from source
+
+Building from source requires Go:
 
 ```bash
 git clone https://github.com/benscobie/lidarr-utils.git
 cd lidarr-utils
 go build -o lidarr-utils .
-```
-
-Docker images can use the same commands and configuration:
-
-```bash
-docker build -t lidarr-utils .
-docker run --rm \
-  -v ./config:/app/config \
-  lidarr-utils monitor labels --config=/app/config/config.yaml
 ```
 
 ## Configuration
@@ -201,7 +232,9 @@ Existing albums are matched only by MusicBrainz release-group MBID. Missing
 albums use an exact Lidarr lookup:
 
 - With `missing_artists.enabled: false`, releases whose owning artists are absent from Lidarr are skipped.
-- With `missing_artists.enabled: true`, only owners needed by selected release groups are added, including canonical Various Artists when it owns the release.
+- With `missing_artists.enabled: true`, only owners needed by selected release
+  groups are added, including the MusicBrainz Various Artists entry when it
+  owns the release.
 - A missing artist uses the selected Lidarr root folder's default quality
   profile, metadata profile, and tags. It starts unmonitored with
   `monitorNewItems: none` and no artist-wide search.
@@ -227,12 +260,13 @@ before track hydration.
 with a secondary type; combining that with a non-empty exclusion list is a
 configuration error. `various_artists` accepts `include`, `exclude`, or `only`.
 
-Various Artists (VA) means the catalogue owner Lidarr assigns: MusicBrainz's
-canonical Various Artists entity. An ordinary artist's EP or single that is
-linked to a VA compilation is still not VA-owned. `compilation_singles: exclude`
-is independent of `various_artists`: it checks only otherwise eligible EPs and
-singles for MusicBrainz's explicit `single from` relationship to a compilation
-directly credited to VA. Relationship results are cached for the run.
+Various Artists (VA) means the catalogue owner Lidarr assigns: the specific
+Various Artists entry defined by MusicBrainz. An ordinary artist's EP or single
+that is linked to a VA compilation is still not VA-owned.
+`compilation_singles: exclude` is independent of `various_artists`: it checks
+only otherwise eligible EPs and singles for MusicBrainz's explicit `single
+from` relationship to a compilation directly credited to VA. Relationship
+results are cached for the run.
 
 ### Scheduling
 
@@ -263,13 +297,18 @@ track coverage.
   batch is the only monitoring/search mutation.
 - `dedupe` can delete downloaded duplicate files. Preview it with `--dry-run`.
 
-## Major-version configuration migration
+## v2 migration
 
-This major version intentionally removes compatibility aliases. Move each
-mode-specific setting into its mode's `selection` block:
+v2 intentionally removes compatibility aliases. Update v1 commands and
+configuration using the following mappings:
 
-| Removed configuration | Replacement |
+| Removed v1 form | v2 replacement |
 |---|---|
+| `monitor --artist-id 123` | `monitor artist 123` |
+| `monitor --all` | `monitor artist` |
+| `dedupe --cron ...` / `dedupe --run-once` | nested schedules plus `schedule`, or one-off `dedupe` |
+| global `schedule.*` | `monitor.artists.schedule`, `monitor.labels.schedule`, and `dedupe.schedule` |
+| flat `monitor.official_only` / `monitor.exclude_*` | mode-specific values under `monitor.artists` or `monitor.labels` |
 | `official_only: false` | `selection.include_secondary_types: true` |
 | `official_only: true` | `selection.include_secondary_types: false` |
 | `exclude_secondary_types` | `selection.exclude_secondary_types` |
@@ -279,16 +318,6 @@ mode-specific setting into its mode's `selection` block:
 | `exclude_va_releases: true` | `selection.various_artists: exclude` and `selection.compilation_singles: exclude` |
 | `monitor.labels.add_missing_artists` | `monitor.labels.missing_artists.enabled` |
 | `monitor.labels.root_folder` | `monitor.labels.missing_artists.root_folder` |
-
-The prior major-version command migrations remain:
-
-| Removed v1 form | v2 replacement |
-|---|---|
-| `monitor --artist-id 123` | `monitor artist 123` |
-| `monitor --all` | `monitor artist` |
-| `dedupe --cron ...` / `dedupe --run-once` | nested schedules plus `schedule`, or one-off `dedupe` |
-| global `schedule.*` | `monitor.artists.schedule`, `monitor.labels.schedule`, and `dedupe.schedule` |
-| flat `monitor.official_only` / `monitor.exclude_*` | mode-specific values under `monitor.artists` or `monitor.labels` |
 
 ## How dedupe works
 
