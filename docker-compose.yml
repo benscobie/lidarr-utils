@@ -1,12 +1,10 @@
-version: '3.8'
-
 services:
   lidarr-utils:
-    build: .
+    image: ghcr.io/benscobie/lidarr-utils:2
     container_name: lidarr-utils
     restart: unless-stopped
     volumes:
-      - ./config:/app/config  # Mount config directory
+      - ./config:/app/config
     environment:
       # Lidarr connection (can also be set in config.yaml)
       - LIDARR_UTILS_LIDARR_URL=http://lidarr:8686
@@ -28,28 +26,3 @@ services:
 
     # Uncomment to run on a schedule instead of once
     # command: ["dedupe", "--config=/app/config/config.yaml", "--cron=0 2 * * *"]
-
-    networks:
-      - lidarr-network
-
-  # Example Lidarr service (if not already running elsewhere)
-  lidarr:
-    image: lscr.io/linuxserver/lidarr:latest@sha256:ede2bb17350cc97a0d3f24389aa91803f655eac29aa022c77a71f4a61cc621e4
-    container_name: lidarr
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/New_York
-    volumes:
-      - ./lidarr-config:/config
-      - ./music:/music
-      - ./downloads:/downloads
-    ports:
-      - "8686:8686"
-    restart: unless-stopped
-    networks:
-      - lidarr-network
-
-networks:
-  lidarr-network:
-    driver: bridge

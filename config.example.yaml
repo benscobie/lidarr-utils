@@ -24,11 +24,13 @@ dedupe:
 
 monitor:
   artists:
-    skip_fully_covered_releases: true
-    official_only: false
-    exclude_secondary_types: []
-    exclude_formats: []
-    exclude_va_releases: false
+    selection:
+      include_secondary_types: true
+      exclude_secondary_types: []
+      exclude_formats: []
+      various_artists: include          # include | exclude | only
+      compilation_singles: include      # include | exclude
+      skip_fully_covered_releases: true
 
     schedule:
       enabled: false
@@ -38,13 +40,16 @@ monitor:
   labels:
     ids:
       - "a5bfec28-ea8f-426d-ab23-e14aa692c9b5"
-    add_missing_artists: false
-    root_folder: ""
-    skip_fully_covered_releases: true
-    official_only: false
-    exclude_secondary_types: []
-    exclude_formats: []
-    exclude_va_releases: false
+    missing_artists:
+      enabled: false                    # Set true to add releases when their owning artist is absent
+      root_folder: ""
+    selection:
+      include_secondary_types: true
+      exclude_secondary_types: []
+      exclude_formats: []
+      various_artists: only
+      compilation_singles: include
+      skip_fully_covered_releases: true
 
     schedule:
       enabled: false

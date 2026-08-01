@@ -13,62 +13,127 @@ lidarr:
   api_key: secret
 `
 
-func TestLoadConfigDecodesMonitorModes(t *testing.T) {
-	path := writeConfig(t, `
+func TestLoadConfigDecodesIndependentSelectionPolicies(t *testing.T) {
+	cfg, err := LoadConfig(writeConfig(t, `
 lidarr:
   url: http://lidarr:8686
   api_key: secret
 monitor:
   artists:
-    skip_fully_covered_releases: false
-    exclude_formats: [Vinyl]
+    selection:
+      include_secondary_types: false
+      various_artists: exclude
+      compilation_singles: include
+      skip_fully_covered_releases: false
   labels:
     ids: [a5bfec28-ea8f-426d-ab23-e14aa692c9b5]
-    add_missing_artists: true
-    root_folder: /music
-    schedule:
+    missing_artists:
       enabled: true
-      cron: "0 */6 * * *"
-dedupe:
-  schedule:
-    enabled: true
-    cron: "0 2 * * *"
-`)
-
-	cfg, err := LoadConfig(path)
+      root_folder: /music
+    selection:
+      include_secondary_types: true
+      exclude_formats: [Vinyl]
+      various_artists: only
+      compilation_singles: exclude
+`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Monitor.Artists.SkipFullyCoveredReleases {
-		t.Fatal("explicit false must be retained")
+	if cfg.Monitor.Artists.Selection.VariousArtists != VariousArtistsExclude ||
+		cfg.Monitor.Artists.Selection.SkipFullyCoveredReleases {
+		t.Fatalf("unexpected artist policy: %#v", cfg.Monitor.Artists.Selection)
 	}
-	if !cfg.Monitor.Labels.AddMissingArtists || cfg.Monitor.Labels.RootFolder != "/music" {
-		t.Fatalf("unexpected labels config: %#v", cfg.Monitor.Labels)
+	if cfg.Monitor.Labels.Selection.VariousArtists != VariousArtistsOnly ||
+		cfg.Monitor.Labels.Selection.CompilationSingles != CompilationSinglesExclude {
+		t.Fatalf("unexpected label policy: %#v", cfg.Monitor.Labels.Selection)
 	}
-	if !cfg.Dedupe.Schedule.Enabled {
-		t.Fatal("expected dedupe schedule enabled")
+	if !cfg.Monitor.Labels.MissingArtists.Enabled ||
+		cfg.Monitor.Labels.MissingArtists.RootFolder != "/music" {
+		t.Fatalf("unexpected missing-artist config: %#v", cfg.Monitor.Labels.MissingArtists)
 	}
 }
 
-func TestLoadConfigDefaultsCoverageSelectionOn(t *testing.T) {
+func TestLoadConfigDefaultsBothSelectionPolicies(t *testing.T) {
 	cfg, err := LoadConfig(writeConfig(t, validMinimalYAML))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Monitor.Artists.SkipFullyCoveredReleases ||
-		!cfg.Monitor.Labels.SkipFullyCoveredReleases {
-		t.Fatal("coverage selection must default on for both monitor modes")
+	for name, policy := range map[string]ReleaseSelectionPolicy{
+		"artists": cfg.Monitor.Artists.Selection,
+		"labels":  cfg.Monitor.Labels.Selection,
+	} {
+		if !policy.IncludeSecondaryTypes ||
+			policy.VariousArtists != VariousArtistsInclude ||
+			policy.CompilationSingles != CompilationSinglesInclude ||
+			!policy.SkipFullyCoveredReleases {
+			t.Fatalf("%s defaults are wrong: %#v", name, policy)
+		}
 	}
 }
 
-func TestLoadConfigBindsNestedMonitorEnvironment(t *testing.T) {
-	t.Setenv("LIDARR_UTILS_MONITOR_LABELS_EXCLUDE_VA_RELEASES", "true")
+func TestLoadConfigBindsSelectionEnvironment(t *testing.T) {
+	t.Setenv("LIDARR_UTILS_MONITOR_ARTISTS_SELECTION_EXCLUDE_SECONDARY_TYPES", "Live,Compilation")
+	t.Setenv("LIDARR_UTILS_MONITOR_LABELS_SELECTION_VARIOUS_ARTISTS", "only")
 	cfg, err := LoadConfig(writeConfig(t, validMinimalYAML))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Monitor.Labels.ExcludeVAReleases {
-		t.Fatal("nested monitor environment binding was not applied")
+	if !slices.Equal(
+		cfg.Monitor.Artists.Selection.ExcludeSecondaryTypes,
+		[]string{"Live", "Compilation"},
+	) {
+		t.Fatalf("unexpected artist environment policy: %#v", cfg.Monitor.Artists.Selection)
+	}
+	if cfg.Monitor.Labels.Selection.VariousArtists != VariousArtistsOnly {
+		t.Fatalf("unexpected label environment policy: %#v", cfg.Monitor.Labels.Selection)
+	}
+}
+
+func TestLoadConfigRejectsInvalidSelection(t *testing.T) {
+	tests := []struct {
+		name    string
+		monitor string
+		wantErr string
+	}{
+		{
+			name: "invalid artist various artists policy",
+			monitor: `
+  artists:
+    selection:
+      various_artists: sometimes`,
+			wantErr: `monitor.artists.selection.various_artists has invalid value "sometimes"; accepted values: include, exclude, only`,
+		},
+		{
+			name: "invalid label compilation singles policy",
+			monitor: `
+  labels:
+    selection:
+      compilation_singles: sometimes`,
+			wantErr: `monitor.labels.selection.compilation_singles has invalid value "sometimes"; accepted values: include, exclude`,
+		},
+		{
+			name: "label secondary exclusions require secondary types",
+			monitor: `
+  labels:
+    selection:
+      include_secondary_types: false
+      exclude_secondary_types: [Live]`,
+			wantErr: "monitor.labels.selection.exclude_secondary_types must be empty when monitor.labels.selection.include_secondary_types is false",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := LoadConfig(writeConfig(t, `
+lidarr:
+  url: http://lidarr:8686
+  api_key: secret
+monitor:`+test.monitor+`
+`))
+			if err == nil || err.Error() != test.wantErr {
+				t.Fatalf("error = %v, want %q", err, test.wantErr)
+			}
+		})
 	}
 }
 
