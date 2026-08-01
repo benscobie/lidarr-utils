@@ -52,7 +52,7 @@ dockers_v2:
       - "benscobie/lidarr-utils"
     tags:
       - "{{ .Version }}"
-      - "latest"
+      - '{{ if eq .Prerelease "" }}{{ .Major }}{{ end }}'
     dockerfile: Dockerfile.goreleaser
     extra_files:
       - config.example.yaml

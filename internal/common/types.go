@@ -7,19 +7,20 @@ type Release struct {
 }
 
 type Album struct {
-	ID               int
-	Title            string
-	AlbumType        string
-	SecondaryTypes   []string
-	ArtistID         int
-	ArtistName       string
-	ForeignArtistIDs []string
-	ForeignAlbumID   string
-	Tracks           []Track
-	Releases         []Release
-	HasFiles         bool
-	Monitored        bool
-	IsVACompilation  bool
+	ID                      int
+	Title                   string
+	AlbumType               string
+	SecondaryTypes          []string
+	ArtistID                int
+	ArtistName              string
+	ForeignArtistIDs        []string
+	ForeignAlbumID          string
+	Tracks                  []Track
+	Releases                []Release
+	HasFiles                bool
+	Monitored               bool
+	IsVariousArtists        bool
+	CompilationSingleSource string
 }
 
 type Track struct {

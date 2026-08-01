@@ -1,6 +1,8 @@
 package monitor
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/benscobie/lidarr-utils/internal/config"
@@ -16,11 +18,13 @@ type fakeMonitorClient struct {
 	monitorCalls [][]int
 	searchCalls  [][]int
 	nextAlbumID  int
+	addErr       error
+	monitorErr   error
 }
 
 func (f *fakeMonitorClient) MonitorAlbums(ids []int) error {
 	f.monitorCalls = append(f.monitorCalls, append([]int(nil), ids...))
-	return nil
+	return f.monitorErr
 }
 
 func (f *fakeMonitorClient) SearchAlbum(ids []int) error {
@@ -30,6 +34,9 @@ func (f *fakeMonitorClient) SearchAlbum(ids []int) error {
 
 func (f *fakeMonitorClient) AddAlbum(album lidarr.Album) (*lidarr.Album, error) {
 	f.addRequests = append(f.addRequests, album)
+	if f.addErr != nil {
+		return nil, f.addErr
+	}
 	f.nextAlbumID++
 	album.ID = f.nextAlbumID
 	if album.Artist != nil {
@@ -47,6 +54,7 @@ func (f *fakeMonitorClient) GetRootFolders() ([]lidarr.RootFolder, error) {
 
 type fakeMonitorMBClient struct {
 	vaCalls int
+	vaErr   error
 }
 
 func (f *fakeMonitorMBClient) LabelReleaseGroups(_ string) (musicbrainz.LabelBrowseResult, error) {
@@ -55,7 +63,7 @@ func (f *fakeMonitorMBClient) LabelReleaseGroups(_ string) (musicbrainz.LabelBro
 
 func (f *fakeMonitorMBClient) VACompilationSource(_ string) (string, error) {
 	f.vaCalls++
-	return "", nil
+	return "", f.vaErr
 }
 
 func TestMonitorArtistFetchPolicy(t *testing.T) {
@@ -126,8 +134,11 @@ func TestMonitorSkipsTrackFetchForFilteredAlbum(t *testing.T) {
 	mon := NewMonitor(MonitorOptions{
 		Client: client,
 		DryRun: true,
-		Filters: config.MonitorFilters{
-			ExcludeFormats: []string{"Vinyl"},
+		Policy: config.ReleaseSelectionPolicy{
+			IncludeSecondaryTypes: true,
+			ExcludeFormats:        []string{"Vinyl"},
+			VariousArtists:        config.VariousArtistsInclude,
+			CompilationSingles:    config.CompilationSinglesInclude,
 		},
 	})
 
@@ -168,6 +179,112 @@ func TestMonitorSkipsVAWorkWhenDisabled(t *testing.T) {
 	}
 	if mbClient.vaCalls != 0 || stats.SinglesSelected != 1 {
 		t.Fatalf("VA calls=%d singles=%d", mbClient.vaCalls, stats.SinglesSelected)
+	}
+}
+
+func TestMonitorCompilationSinglesIncludePerformsNoRelationshipWork(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.artists = []lidarr.Artist{{ID: 1, ArtistName: "Artist", ForeignID: "artist"}}
+	catalog.albumsByArtist[1] = []lidarr.Album{{
+		ID:             10,
+		ArtistID:       1,
+		Title:          "Ordinary Single",
+		AlbumType:      "Single",
+		ForeignAlbumID: "rg-single",
+	}}
+	client := &fakeMonitorClient{countingCatalogClient: catalog}
+	mbClient := &fakeMonitorMBClient{}
+	mon := NewMonitor(MonitorOptions{
+		Client:   client,
+		MBClient: mbClient,
+		DryRun:   true,
+		Policy: config.ReleaseSelectionPolicy{
+			IncludeSecondaryTypes: true,
+			VariousArtists:        config.VariousArtistsInclude,
+			CompilationSingles:    config.CompilationSinglesInclude,
+		},
+	})
+
+	stats, err := mon.RunArtists([]string{"1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.SinglesSelected != 1 || mbClient.vaCalls != 0 {
+		t.Fatalf("singles=%d relationship calls=%d", stats.SinglesSelected, mbClient.vaCalls)
+	}
+}
+
+func TestMonitorCompilationSinglesExcludeRunsAfterCheapFilters(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.artists = []lidarr.Artist{{ID: 1, ArtistName: "Artist", ForeignID: "artist"}}
+	catalog.albumsByArtist[1] = []lidarr.Album{{
+		ID:             10,
+		ArtistID:       1,
+		Title:          "Vinyl Single",
+		AlbumType:      "Single",
+		ForeignAlbumID: "rg-single",
+		Releases:       []lidarr.Release{{Format: "Vinyl"}},
+	}}
+	client := &fakeMonitorClient{countingCatalogClient: catalog}
+	mbClient := &fakeMonitorMBClient{}
+	mon := NewMonitor(MonitorOptions{
+		Client:   client,
+		MBClient: mbClient,
+		DryRun:   true,
+		Policy: config.ReleaseSelectionPolicy{
+			IncludeSecondaryTypes: true,
+			ExcludeFormats:        []string{"Vinyl"},
+			VariousArtists:        config.VariousArtistsInclude,
+			CompilationSingles:    config.CompilationSinglesExclude,
+		},
+	})
+
+	stats, err := mon.RunArtists([]string{"1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mbClient.vaCalls != 0 || len(catalog.trackCalls) != 0 || stats.Excluded != 1 {
+		t.Fatalf("relationship calls=%d tracks=%v excluded=%d", mbClient.vaCalls, catalog.trackCalls, stats.Excluded)
+	}
+}
+
+func TestMonitorCompilationRelationshipFailureFailsOpenOnce(t *testing.T) {
+	catalog := newCountingCatalogClient()
+	catalog.artists = []lidarr.Artist{{ID: 1, ArtistName: "Artist", ForeignID: "artist"}}
+	catalog.albumsByArtist[1] = []lidarr.Album{{
+		ID:             10,
+		ArtistID:       1,
+		Title:          "Ordinary Single",
+		AlbumType:      "Single",
+		ForeignAlbumID: "rg-single",
+	}}
+	client := &fakeMonitorClient{countingCatalogClient: catalog}
+	mbClient := &fakeMonitorMBClient{vaErr: errors.New("unavailable")}
+	mon := NewMonitor(MonitorOptions{
+		Client:   client,
+		MBClient: mbClient,
+		DryRun:   true,
+		Policy: config.ReleaseSelectionPolicy{
+			IncludeSecondaryTypes: true,
+			VariousArtists:        config.VariousArtistsInclude,
+			CompilationSingles:    config.CompilationSinglesExclude,
+		},
+	})
+
+	var stats *Stats
+	output := captureMonitorLogs(t, func() {
+		var err error
+		stats, err = mon.RunArtists([]string{"1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	if stats.SinglesSelected != 1 || stats.Warnings != 1 ||
+		stats.RelationshipChecks != 1 || stats.RelationshipFailures != 1 {
+		t.Fatalf("unexpected stats: %#v", stats)
+	}
+	if mbClient.vaCalls != 1 || strings.Count(output, "MusicBrainz compilation-single lookup failed") != 1 {
+		t.Fatalf("relationship calls=%d logs=%q", mbClient.vaCalls, output)
 	}
 }
 

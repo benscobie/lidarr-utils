@@ -34,13 +34,6 @@ type DedupeConfig struct {
 	Schedule           ScheduleConfig `mapstructure:"schedule"`
 }
 
-type MonitorFilters struct {
-	OfficialOnly          bool     `mapstructure:"official_only"`
-	ExcludeSecondaryTypes []string `mapstructure:"exclude_secondary_types"`
-	ExcludeFormats        []string `mapstructure:"exclude_formats"`
-	ExcludeVAReleases     bool     `mapstructure:"exclude_va_releases"`
-}
-
 type ScheduleConfig struct {
 	Enabled    bool   `mapstructure:"enabled"`
 	Cron       string `mapstructure:"cron"`
@@ -48,18 +41,15 @@ type ScheduleConfig struct {
 }
 
 type ArtistMonitorConfig struct {
-	MonitorFilters           `mapstructure:",squash"`
-	SkipFullyCoveredReleases bool           `mapstructure:"skip_fully_covered_releases"`
-	Schedule                 ScheduleConfig `mapstructure:"schedule"`
+	Selection ReleaseSelectionPolicy `mapstructure:"selection"`
+	Schedule  ScheduleConfig         `mapstructure:"schedule"`
 }
 
 type LabelMonitorConfig struct {
-	MonitorFilters           `mapstructure:",squash"`
-	IDs                      []string       `mapstructure:"ids"`
-	AddMissingArtists        bool           `mapstructure:"add_missing_artists"`
-	RootFolder               string         `mapstructure:"root_folder"`
-	SkipFullyCoveredReleases bool           `mapstructure:"skip_fully_covered_releases"`
-	Schedule                 ScheduleConfig `mapstructure:"schedule"`
+	IDs            []string               `mapstructure:"ids"`
+	MissingArtists MissingArtistsConfig   `mapstructure:"missing_artists"`
+	Selection      ReleaseSelectionPolicy `mapstructure:"selection"`
+	Schedule       ScheduleConfig         `mapstructure:"schedule"`
 }
 
 type MonitorConfig struct {
@@ -87,34 +77,47 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	// Bind specific environment variables
 	bindings := map[string]string{
-		"lidarr.url":                                  "LIDARR_UTILS_LIDARR_URL",
-		"lidarr.api_key":                              "LIDARR_UTILS_LIDARR_API_KEY",
-		"app.dry_run":                                 "LIDARR_UTILS_APP_DRY_RUN",
-		"app.log_level":                               "LIDARR_UTILS_APP_LOG_LEVEL",
-		"app.log_file":                                "LIDARR_UTILS_APP_LOG_FILE",
-		"app.state_file":                              "LIDARR_UTILS_APP_STATE_FILE",
-		"dedupe.add_import_exclusion":                 "LIDARR_UTILS_DEDUPE_ADD_IMPORT_EXCLUSION",
-		"dedupe.schedule.enabled":                     "LIDARR_UTILS_DEDUPE_SCHEDULE_ENABLED",
-		"dedupe.schedule.cron":                        "LIDARR_UTILS_DEDUPE_SCHEDULE_CRON",
-		"dedupe.schedule.run_on_start":                "LIDARR_UTILS_DEDUPE_SCHEDULE_RUN_ON_START",
-		"monitor.artists.official_only":               "LIDARR_UTILS_MONITOR_ARTISTS_OFFICIAL_ONLY",
-		"monitor.artists.exclude_secondary_types":     "LIDARR_UTILS_MONITOR_ARTISTS_EXCLUDE_SECONDARY_TYPES",
-		"monitor.artists.exclude_formats":             "LIDARR_UTILS_MONITOR_ARTISTS_EXCLUDE_FORMATS",
-		"monitor.artists.exclude_va_releases":         "LIDARR_UTILS_MONITOR_ARTISTS_EXCLUDE_VA_RELEASES",
-		"monitor.artists.skip_fully_covered_releases": "LIDARR_UTILS_MONITOR_ARTISTS_SKIP_FULLY_COVERED_RELEASES",
-		"monitor.artists.schedule.enabled":            "LIDARR_UTILS_MONITOR_ARTISTS_SCHEDULE_ENABLED",
-		"monitor.artists.schedule.cron":               "LIDARR_UTILS_MONITOR_ARTISTS_SCHEDULE_CRON",
-		"monitor.artists.schedule.run_on_start":       "LIDARR_UTILS_MONITOR_ARTISTS_SCHEDULE_RUN_ON_START",
-		"monitor.labels.add_missing_artists":          "LIDARR_UTILS_MONITOR_LABELS_ADD_MISSING_ARTISTS",
-		"monitor.labels.root_folder":                  "LIDARR_UTILS_MONITOR_LABELS_ROOT_FOLDER",
-		"monitor.labels.official_only":                "LIDARR_UTILS_MONITOR_LABELS_OFFICIAL_ONLY",
-		"monitor.labels.exclude_secondary_types":      "LIDARR_UTILS_MONITOR_LABELS_EXCLUDE_SECONDARY_TYPES",
-		"monitor.labels.exclude_formats":              "LIDARR_UTILS_MONITOR_LABELS_EXCLUDE_FORMATS",
-		"monitor.labels.exclude_va_releases":          "LIDARR_UTILS_MONITOR_LABELS_EXCLUDE_VA_RELEASES",
-		"monitor.labels.skip_fully_covered_releases":  "LIDARR_UTILS_MONITOR_LABELS_SKIP_FULLY_COVERED_RELEASES",
-		"monitor.labels.schedule.enabled":             "LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_ENABLED",
-		"monitor.labels.schedule.cron":                "LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_CRON",
-		"monitor.labels.schedule.run_on_start":        "LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_RUN_ON_START",
+		"lidarr.url":                                 "LIDARR_UTILS_LIDARR_URL",
+		"lidarr.api_key":                             "LIDARR_UTILS_LIDARR_API_KEY",
+		"app.dry_run":                                "LIDARR_UTILS_APP_DRY_RUN",
+		"app.log_level":                              "LIDARR_UTILS_APP_LOG_LEVEL",
+		"app.log_file":                               "LIDARR_UTILS_APP_LOG_FILE",
+		"app.state_file":                             "LIDARR_UTILS_APP_STATE_FILE",
+		"dedupe.add_import_exclusion":                "LIDARR_UTILS_DEDUPE_ADD_IMPORT_EXCLUSION",
+		"dedupe.schedule.enabled":                    "LIDARR_UTILS_DEDUPE_SCHEDULE_ENABLED",
+		"dedupe.schedule.cron":                       "LIDARR_UTILS_DEDUPE_SCHEDULE_CRON",
+		"dedupe.schedule.run_on_start":               "LIDARR_UTILS_DEDUPE_SCHEDULE_RUN_ON_START",
+		"monitor.artists.schedule.enabled":           "LIDARR_UTILS_MONITOR_ARTISTS_SCHEDULE_ENABLED",
+		"monitor.artists.schedule.cron":              "LIDARR_UTILS_MONITOR_ARTISTS_SCHEDULE_CRON",
+		"monitor.artists.schedule.run_on_start":      "LIDARR_UTILS_MONITOR_ARTISTS_SCHEDULE_RUN_ON_START",
+		"monitor.labels.missing_artists.enabled":     "LIDARR_UTILS_MONITOR_LABELS_MISSING_ARTISTS_ENABLED",
+		"monitor.labels.missing_artists.root_folder": "LIDARR_UTILS_MONITOR_LABELS_MISSING_ARTISTS_ROOT_FOLDER",
+		"monitor.labels.schedule.enabled":            "LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_ENABLED",
+		"monitor.labels.schedule.cron":               "LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_CRON",
+		"monitor.labels.schedule.run_on_start":       "LIDARR_UTILS_MONITOR_LABELS_SCHEDULE_RUN_ON_START",
+	}
+	for _, prefix := range []string{
+		"monitor.artists.selection",
+		"monitor.labels.selection",
+	} {
+		bindings[prefix+".include_secondary_types"] = strings.ToUpper(
+			strings.ReplaceAll("LIDARR_UTILS_"+prefix+"_include_secondary_types", ".", "_"),
+		)
+		bindings[prefix+".exclude_secondary_types"] = strings.ToUpper(
+			strings.ReplaceAll("LIDARR_UTILS_"+prefix+"_exclude_secondary_types", ".", "_"),
+		)
+		bindings[prefix+".exclude_formats"] = strings.ToUpper(
+			strings.ReplaceAll("LIDARR_UTILS_"+prefix+"_exclude_formats", ".", "_"),
+		)
+		bindings[prefix+".various_artists"] = strings.ToUpper(
+			strings.ReplaceAll("LIDARR_UTILS_"+prefix+"_various_artists", ".", "_"),
+		)
+		bindings[prefix+".compilation_singles"] = strings.ToUpper(
+			strings.ReplaceAll("LIDARR_UTILS_"+prefix+"_compilation_singles", ".", "_"),
+		)
+		bindings[prefix+".skip_fully_covered_releases"] = strings.ToUpper(
+			strings.ReplaceAll("LIDARR_UTILS_"+prefix+"_skip_fully_covered_releases", ".", "_"),
+		)
 	}
 	for key, env := range bindings {
 		if err := v.BindEnv(key, env); err != nil {
@@ -127,8 +130,15 @@ func LoadConfig(configPath string) (*Config, error) {
 	v.SetDefault("app.log_level", "info")
 	v.SetDefault("app.log_file", "lidarr-utils.log")
 	v.SetDefault("dedupe.add_import_exclusion", false)
-	v.SetDefault("monitor.artists.skip_fully_covered_releases", true)
-	v.SetDefault("monitor.labels.skip_fully_covered_releases", true)
+	for _, prefix := range []string{
+		"monitor.artists.selection",
+		"monitor.labels.selection",
+	} {
+		v.SetDefault(prefix+".include_secondary_types", true)
+		v.SetDefault(prefix+".various_artists", string(VariousArtistsInclude))
+		v.SetDefault(prefix+".compilation_singles", string(CompilationSinglesInclude))
+		v.SetDefault(prefix+".skip_fully_covered_releases", true)
+	}
 	for _, prefix := range []string{
 		"monitor.artists.schedule",
 		"monitor.labels.schedule",
@@ -172,6 +182,18 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, err
 	}
 	config.Monitor.Labels.IDs = normalizedIDs
+	if err := validateReleaseSelection(
+		"monitor.artists.selection",
+		config.Monitor.Artists.Selection,
+	); err != nil {
+		return nil, err
+	}
+	if err := validateReleaseSelection(
+		"monitor.labels.selection",
+		config.Monitor.Labels.Selection,
+	); err != nil {
+		return nil, err
+	}
 
 	// Validate required fields
 	if config.Lidarr.URL == "" {
@@ -221,23 +243,23 @@ func (c *Config) Print() {
 	fmt.Printf("    Add Import Exclusion: %v\n", c.Dedupe.AddImportExclusion)
 	printSchedule("    Schedule", c.Dedupe.Schedule)
 	fmt.Printf("  Monitor Artists:\n")
-	printMonitorFilters(c.Monitor.Artists.MonitorFilters)
-	fmt.Printf("    Skip Fully Covered Releases: %v\n", c.Monitor.Artists.SkipFullyCoveredReleases)
+	printSelection("    Selection", c.Monitor.Artists.Selection)
 	printSchedule("    Schedule", c.Monitor.Artists.Schedule)
 	fmt.Printf("  Monitor Labels:\n")
 	fmt.Printf("    IDs: %v\n", c.Monitor.Labels.IDs)
-	fmt.Printf("    Add Missing Artists: %v\n", c.Monitor.Labels.AddMissingArtists)
-	fmt.Printf("    Root Folder: %s\n", c.Monitor.Labels.RootFolder)
-	printMonitorFilters(c.Monitor.Labels.MonitorFilters)
-	fmt.Printf("    Skip Fully Covered Releases: %v\n", c.Monitor.Labels.SkipFullyCoveredReleases)
+	fmt.Printf("    Missing Artists Enabled: %v\n", c.Monitor.Labels.MissingArtists.Enabled)
+	fmt.Printf("    Missing Artists Root Folder: %s\n", c.Monitor.Labels.MissingArtists.RootFolder)
+	printSelection("    Selection", c.Monitor.Labels.Selection)
 	printSchedule("    Schedule", c.Monitor.Labels.Schedule)
 }
 
-func printMonitorFilters(filters MonitorFilters) {
-	fmt.Printf("    Official Only: %v\n", filters.OfficialOnly)
-	fmt.Printf("    Exclude Secondary Types: %v\n", filters.ExcludeSecondaryTypes)
-	fmt.Printf("    Exclude Formats: %v\n", filters.ExcludeFormats)
-	fmt.Printf("    Exclude VA Releases: %v\n", filters.ExcludeVAReleases)
+func printSelection(prefix string, policy ReleaseSelectionPolicy) {
+	fmt.Printf("%s Include Secondary Types: %v\n", prefix, policy.IncludeSecondaryTypes)
+	fmt.Printf("%s Exclude Secondary Types: %v\n", prefix, policy.ExcludeSecondaryTypes)
+	fmt.Printf("%s Exclude Formats: %v\n", prefix, policy.ExcludeFormats)
+	fmt.Printf("%s Various Artists: %s\n", prefix, policy.VariousArtists)
+	fmt.Printf("%s Compilation Singles: %s\n", prefix, policy.CompilationSingles)
+	fmt.Printf("%s Skip Fully Covered Releases: %v\n", prefix, policy.SkipFullyCoveredReleases)
 }
 
 func printSchedule(prefix string, schedule ScheduleConfig) {

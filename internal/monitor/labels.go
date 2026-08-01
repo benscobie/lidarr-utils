@@ -14,18 +14,17 @@ import (
 )
 
 type LabelOptions struct {
-	IDs                      []string
-	AddMissingArtists        bool
-	RootFolder               string
-	Filters                  config.MonitorFilters
-	SkipFullyCoveredReleases bool
-	DryRun                   bool
+	IDs            []string
+	MissingArtists config.MissingArtistsConfig
+	Policy         config.ReleaseSelectionPolicy
+	DryRun         bool
 }
 
 type PlannedLabelAlbum struct {
-	Album        common.Album
-	Lookup       *lidarr.Album
-	ArtistExists bool
+	Album          common.Album
+	Lookup         *lidarr.Album
+	ArtistExists   bool
+	OwnerForeignID string
 }
 
 type LabelPlan struct {
@@ -46,6 +45,10 @@ type LabelStats struct {
 	AlbumsMonitored       int
 	SearchesSubmitted     int
 	Failures              int
+	Warnings              int
+	RelationshipChecks    int
+	RelationshipCacheHits int
+	RelationshipFailures  int
 }
 
 type resolvedLabelCandidate struct {
@@ -53,6 +56,7 @@ type resolvedLabelCandidate struct {
 	lookup         *lidarr.Album
 	artistExists   bool
 	ownerForeignID string
+	tracks         []common.Track
 }
 
 func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
@@ -61,7 +65,10 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 		return plan, fmt.Errorf("MusicBrainz client is required for label monitoring")
 	}
 
-	groups, groupOrder := m.discoverLabelGroups(opts.IDs, &plan.Stats)
+	groups, groupOrder, err := m.discoverLabelGroups(opts.IDs, &plan.Stats)
+	if err != nil {
+		return plan, err
+	}
 	plan.Stats.GroupsDiscovered = len(groupOrder)
 	if len(groupOrder) == 0 {
 		return plan, nil
@@ -87,24 +94,9 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 	for _, groupID := range groupOrder {
 		group := groups[groupID]
 		groupAlbum := albumFromLabelGroup(group)
-
-		if common.ShouldExcludeBySecondaryType(
-			groupAlbum,
-			opts.Filters.OfficialOnly,
-			opts.Filters.ExcludeSecondaryTypes,
-		) {
+		if reason := earlyLabelPolicyExclusion(group, opts.Policy); reason != "" {
 			plan.Stats.GroupsFiltered++
-			logExcludedAlbum(groupAlbum, opts.Filters, true)
-			continue
-		}
-		if opts.Filters.ExcludeVAReleases && hasDirectVACredit(groupAlbum) {
-			plan.Stats.GroupsFiltered++
-			log.Printf(
-				"  Exclude: %s - %s (%s) — credited directly to Various Artists",
-				groupAlbum.ArtistName,
-				groupAlbum.Title,
-				groupAlbum.AlbumType,
-			)
+			logExcludedAlbum(ExcludedAlbum{Album: groupAlbum, Reason: reason}, true)
 			continue
 		}
 
@@ -115,13 +107,13 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 				creditedExisting = append(creditedExisting, artist)
 			}
 		}
-		if !opts.AddMissingArtists &&
+		if !opts.MissingArtists.Enabled &&
 			completeCredits &&
 			len(creditIDs) > 0 &&
 			len(creditedExisting) == 0 {
 			plan.Stats.MissingArtistSkipped++
 			log.Printf(
-				"  Skip: %s - %s (%s) — artist is not in Lidarr and add_missing_artists is false",
+				"  Skip: %s - %s (%s) — artist is not in Lidarr and monitor.labels.missing_artists.enabled is false",
 				groupAlbum.ArtistName,
 				groupAlbum.Title,
 				groupAlbum.AlbumType,
@@ -148,7 +140,10 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			}
 		}
 
-		candidate := resolvedLabelCandidate{album: groupAlbum}
+		candidate := resolvedLabelCandidate{
+			album:  groupAlbum,
+			tracks: tracksFromLabelGroup(group),
+		}
 		if existingAlbum != nil {
 			candidate.album = mergeLookup(groupAlbum, *existingAlbum)
 			candidate.artistExists = true
@@ -167,7 +162,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 				continue
 			}
 
-			owner, candidate.ownerForeignID = lookupOwner(exact, creditIDs, artistsByID)
+			owner, candidate.ownerForeignID = lookupOwner(exact, artistsByID)
 			if owner.ID != 0 {
 				candidate.artistExists = true
 				candidate.ownerForeignID = owner.ForeignID
@@ -179,10 +174,10 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 				log.Printf("ERROR: Lidarr lookup did not identify an artist for %s", group.ID)
 				continue
 			}
-			if !candidate.artistExists && !opts.AddMissingArtists {
+			if !candidate.artistExists && !opts.MissingArtists.Enabled {
 				plan.Stats.MissingArtistSkipped++
 				log.Printf(
-					"  Skip: %s - %s (%s) — artist is not in Lidarr and add_missing_artists is false",
+					"  Skip: %s - %s (%s) — artist is not in Lidarr and monitor.labels.missing_artists.enabled is false",
 					candidate.album.ArtistName,
 					candidate.album.Title,
 					candidate.album.AlbumType,
@@ -205,6 +200,12 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			log.Printf("ERROR: Could not determine catalogue owner for %s", group.ID)
 			continue
 		}
+		candidate.album.IsVariousArtists = candidate.ownerForeignID == musicbrainz.VariousArtistsID
+		if reason := variousArtistsExclusionReason(candidate.album.IsVariousArtists, opts.Policy); reason != "" {
+			plan.Stats.GroupsFiltered++
+			logExcludedAlbum(ExcludedAlbum{Album: candidate.album, Reason: reason}, true)
+			continue
+		}
 		if _, exists := buckets[candidate.ownerForeignID]; !exists {
 			bucketOrder = append(bucketOrder, candidate.ownerForeignID)
 		}
@@ -215,9 +216,9 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 		resolved[group.ID] = candidate
 	}
 
-	var vaFilter *VAFilter
-	if opts.Filters.ExcludeVAReleases {
-		vaFilter = NewVAFilter(m.opts.MBClient)
+	var classifier *CompilationSingleClassifier
+	if opts.Policy.CompilationSingles == config.CompilationSinglesExclude {
+		classifier = NewCompilationSingleClassifier(m.opts.MBClient)
 	}
 	for ownerIndex, ownerID := range bucketOrder {
 		candidateIDs := buckets[ownerID]
@@ -245,6 +246,7 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 		)
 
 		var catalogue []common.Album
+		var catalogueWarnings []string
 		if owner, ok := artistsByForeignID[ownerID]; ok {
 			raw, err := cache.AlbumsForArtist(owner.ID)
 			if err != nil {
@@ -252,23 +254,33 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 				log.Printf("ERROR: Failed to get albums for %s: %v", owner.ArtistName, err)
 				continue
 			}
-			catalogue = prepareLidarrCatalogue(
+			catalogue, catalogueWarnings = prepareLidarrCatalogue(
 				owner,
 				raw,
 				cache,
-				opts.Filters,
-				vaFilter,
+				opts.Policy,
+				classifier,
 			)
 		}
+		plan.Stats.Warnings += logSelectionWarnings(catalogueWarnings)
 
 		var synthetic []common.Album
 		for _, groupID := range candidateIDs {
 			candidate := resolved[groupID]
-			if !containsForeignAlbum(catalogue, groupID) {
-				synthetic = append(synthetic, candidate.album)
+			if containsForeignAlbum(catalogue, groupID) {
+				continue
 			}
+			prepared, warnings := prepareAlbumForSelection(
+				candidate.album,
+				opts.Policy,
+				classifier,
+				func() ([]common.Track, error) {
+					return append([]common.Track(nil), candidate.tracks...), nil
+				},
+			)
+			synthetic = append(synthetic, prepared)
+			plan.Stats.Warnings += logSelectionWarnings(warnings)
 		}
-		markVAAlbums(synthetic, opts.Filters, vaFilter)
 		catalogue = dedupeCatalogue(append(catalogue, synthetic...))
 
 		for _, album := range catalogue {
@@ -279,9 +291,8 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 		}
 
 		result := SelectAlbumsToMonitor(catalogue, SelectionOptions{
-			Filters:                  opts.Filters,
-			SkipFullyCoveredReleases: opts.SkipFullyCoveredReleases,
-			CandidateReleaseGroups:   candidateSet,
+			Policy:                 opts.Policy,
+			CandidateReleaseGroups: candidateSet,
 		})
 		plan.Stats.GroupsFiltered += len(result.Excluded)
 		plan.Stats.GroupsCoverageSkipped += len(result.Skipped)
@@ -289,9 +300,9 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 			logSkippedAlbum(skipped)
 		}
 		for _, excluded := range result.Excluded {
-			logExcludedAlbum(excluded, opts.Filters, false)
+			logExcludedAlbum(excluded, false)
 		}
-		logSelectionWarnings(result.Warnings)
+		plan.Stats.Warnings += logSelectionWarnings(result.Warnings)
 		for _, album := range result.ToMonitor {
 			candidate := resolved[album.ForeignAlbumID]
 			switch {
@@ -315,11 +326,28 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 				)
 			}
 			plan.Selected = append(plan.Selected, PlannedLabelAlbum{
-				Album:        album,
-				Lookup:       candidate.lookup,
-				ArtistExists: candidate.artistExists,
+				Album:          album,
+				Lookup:         candidate.lookup,
+				ArtistExists:   candidate.artistExists,
+				OwnerForeignID: candidate.ownerForeignID,
 			})
 		}
+	}
+	if classifier != nil {
+		classifierStats := classifier.Stats()
+		plan.Stats.RelationshipChecks = classifierStats.Checks
+		plan.Stats.RelationshipCacheHits = classifierStats.CacheHits
+		plan.Stats.RelationshipFailures = classifierStats.Failures
+		plan.Stats.Failures += classifierStats.Failures
+	}
+	if plan.Stats.GroupsDiscovered > 0 && len(plan.Selected) == 0 {
+		log.Printf(
+			"No label albums selected: filtered=%d coverage_skipped=%d missing_owner_skipped=%d already_monitored=%d",
+			plan.Stats.GroupsFiltered,
+			plan.Stats.GroupsCoverageSkipped,
+			plan.Stats.MissingArtistSkipped,
+			plan.Stats.AlreadyMonitored,
+		)
 	}
 
 	return plan, nil
@@ -328,12 +356,12 @@ func (m *Monitor) PlanLabels(opts LabelOptions) (LabelPlan, error) {
 func (m *Monitor) RunLabels(opts LabelOptions) (*LabelStats, error) {
 	dryRun := opts.DryRun || m.opts.DryRun
 	var root lidarr.RootFolder
-	if opts.AddMissingArtists {
+	if opts.MissingArtists.Enabled {
 		roots, err := m.opts.Client.GetRootFolders()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get Lidarr root folders: %w", err)
 		}
-		selected, err := selectRootFolder(roots, opts.RootFolder)
+		selected, err := selectRootFolder(roots, opts.MissingArtists.RootFolder)
 		if err != nil {
 			return nil, err
 		}
@@ -358,8 +386,8 @@ func (m *Monitor) RunLabels(opts LabelOptions) (*LabelStats, error) {
 			continue
 		}
 
-		ownerID := plannedOwnerForeignID(planned)
-		if !planned.ArtistExists && !opts.AddMissingArtists {
+		ownerID := planned.OwnerForeignID
+		if !planned.ArtistExists && !opts.MissingArtists.Enabled {
 			stats.Failures++
 			log.Printf(
 				"ERROR: Refusing to add %s because its artist is missing",
@@ -409,17 +437,11 @@ func (m *Monitor) RunLabels(opts LabelOptions) (*LabelStats, error) {
 		created, err := m.opts.Client.AddAlbum(request)
 		if err != nil {
 			stats.Failures++
-			log.Printf(
-				"ERROR: Failed to add %s; Lidarr may have created its artist: %v",
-				planned.Album.Title,
-				err,
-			)
-			continue
+			return &stats, fmt.Errorf("failed to add label album %q: %w", planned.Album.Title, err)
 		}
 		if created == nil || created.ID <= 0 {
 			stats.Failures++
-			log.Printf("ERROR: Lidarr returned no album ID after adding %s", planned.Album.Title)
-			continue
+			return &stats, fmt.Errorf("Lidarr returned no album ID after adding label album %q", planned.Album.Title)
 		}
 
 		applied := planned.Album
@@ -444,7 +466,7 @@ func (m *Monitor) RunLabels(opts LabelOptions) (*LabelStats, error) {
 
 	applyStats, err := applyAlbums(m.opts.Client, m.opts.State, dryRun, albumsToApply)
 	if err != nil {
-		return &stats, err
+		return &stats, fmt.Errorf("failed to apply label albums: %w", err)
 	}
 	stats.AlbumsMonitored = applyStats.AlbumsMonitored
 	stats.SearchesSubmitted = applyStats.SearchesSubmitted
@@ -467,18 +489,6 @@ func shapeMissingArtist(artist *lidarr.Artist, root lidarr.RootFolder) {
 		Monitored:              false,
 		SearchForMissingAlbums: false,
 	}
-}
-
-func plannedOwnerForeignID(planned PlannedLabelAlbum) string {
-	if planned.Lookup != nil &&
-		planned.Lookup.Artist != nil &&
-		planned.Lookup.Artist.ForeignID != "" {
-		return planned.Lookup.Artist.ForeignID
-	}
-	if len(planned.Album.ForeignArtistIDs) > 0 {
-		return planned.Album.ForeignArtistIDs[0]
-	}
-	return ""
 }
 
 func cloneAlbum(album lidarr.Album) lidarr.Album {
@@ -519,16 +529,29 @@ func (m *Monitor) PrintLabelSummary(stats *LabelStats, duration time.Duration) {
 		fmt.Printf("Albums monitored: %d\n", stats.AlbumsMonitored)
 		fmt.Printf("Searches submitted: %d\n", stats.SearchesSubmitted)
 	}
+	if stats.RelationshipChecks > 0 {
+		fmt.Printf("Compilation relationship checks: %d\n", stats.RelationshipChecks)
+	}
+	if stats.RelationshipCacheHits > 0 {
+		fmt.Printf("Compilation relationship cache hits: %d\n", stats.RelationshipCacheHits)
+	}
+	if stats.RelationshipFailures > 0 {
+		fmt.Printf("Compilation relationship failures: %d\n", stats.RelationshipFailures)
+	}
+	if stats.Warnings > 0 {
+		fmt.Printf("Warnings: %d\n", stats.Warnings)
+	}
 	fmt.Printf("Failures: %d\n\n", stats.Failures)
 }
 
 func (m *Monitor) discoverLabelGroups(
 	labelIDs []string,
 	stats *LabelStats,
-) (map[string]musicbrainz.LabelReleaseGroup, []string) {
+) (map[string]musicbrainz.LabelReleaseGroup, []string, error) {
 	groups := make(map[string]musicbrainz.LabelReleaseGroup)
 	var groupOrder []string
 	seenLabels := make(map[string]struct{}, len(labelIDs))
+	attempted := 0
 	for _, rawID := range labelIDs {
 		labelID := strings.ToLower(strings.TrimSpace(rawID))
 		if labelID == "" {
@@ -538,6 +561,7 @@ func (m *Monitor) discoverLabelGroups(
 			continue
 		}
 		seenLabels[labelID] = struct{}{}
+		attempted++
 
 		result, err := m.opts.MBClient.LabelReleaseGroups(labelID)
 		if err != nil {
@@ -563,7 +587,13 @@ func (m *Monitor) discoverLabelGroups(
 			groupOrder = append(groupOrder, group.ID)
 		}
 	}
-	return groups, groupOrder
+	if attempted > 0 && stats.LabelsProcessed == 0 {
+		return groups, groupOrder, fmt.Errorf(
+			"all %d MusicBrainz label lookups failed",
+			attempted,
+		)
+	}
+	return groups, groupOrder, nil
 }
 
 func albumFromLabelGroup(group musicbrainz.LabelReleaseGroup) common.Album {
@@ -584,14 +614,19 @@ func albumFromLabelGroup(group musicbrainz.LabelReleaseGroup) common.Album {
 	for _, format := range group.Formats {
 		album.Releases = append(album.Releases, common.Release{Format: format})
 	}
+	return album
+}
+
+func tracksFromLabelGroup(group musicbrainz.LabelReleaseGroup) []common.Track {
+	tracks := make([]common.Track, 0, len(group.Tracks))
 	for _, track := range group.Tracks {
-		album.Tracks = append(album.Tracks, common.Track{
+		tracks = append(tracks, common.Track{
 			Title:              track.Title,
 			ForeignTrackID:     track.ID,
 			ForeignRecordingID: track.RecordingID,
 		})
 	}
-	return album
+	return tracks
 }
 
 func mergeLookup(album common.Album, lookup lidarr.Album) common.Album {
@@ -617,6 +652,7 @@ func mergeLookup(album common.Album, lookup lidarr.Album) common.Album {
 			!containsString(album.ForeignArtistIDs, lookup.Artist.ForeignID) {
 			album.ForeignArtistIDs = append(album.ForeignArtistIDs, lookup.Artist.ForeignID)
 		}
+		album.IsVariousArtists = lookup.Artist.ForeignID == musicbrainz.VariousArtistsID
 	}
 	return album
 }
@@ -637,6 +673,32 @@ func usableArtistCredits(group musicbrainz.LabelReleaseGroup) ([]string, bool) {
 		ids = append(ids, credit.ArtistID)
 	}
 	return ids, complete
+}
+
+func earlyLabelPolicyExclusion(
+	group musicbrainz.LabelReleaseGroup,
+	policy config.ReleaseSelectionPolicy,
+) string {
+	album := albumFromLabelGroup(group)
+	if reason := secondaryTypeExclusionReason(album, policy); reason != "" {
+		return reason
+	}
+	creditIDs, complete := usableArtistCredits(group)
+	if !complete || len(creditIDs) == 0 {
+		return ""
+	}
+	containsVA := containsString(creditIDs, musicbrainz.VariousArtistsID)
+	switch policy.VariousArtists {
+	case config.VariousArtistsOnly:
+		if !containsVA {
+			return "not credited to Various Artists; cannot be VA-owned in Lidarr"
+		}
+	case config.VariousArtistsExclude:
+		if len(creditIDs) == 1 && containsVA {
+			return "owned by Various Artists in Lidarr"
+		}
+	}
+	return ""
 }
 
 func albumByForeignID(albums []lidarr.Album, id string) (lidarr.Album, bool) {
@@ -673,7 +735,6 @@ func exactLookup(albums []lidarr.Album, id string) (lidarr.Album, bool) {
 
 func lookupOwner(
 	album lidarr.Album,
-	creditIDs []string,
 	artistsByID map[int]lidarr.Artist,
 ) (lidarr.Artist, string) {
 	if artist, ok := artistsByID[album.ArtistID]; ok {
@@ -686,9 +747,6 @@ func lookupOwner(
 		if album.Artist.ForeignID != "" {
 			return lidarr.Artist{}, album.Artist.ForeignID
 		}
-	}
-	if len(creditIDs) == 1 {
-		return lidarr.Artist{}, creditIDs[0]
 	}
 	return lidarr.Artist{}, ""
 }
@@ -720,15 +778,6 @@ func dedupeCatalogue(albums []common.Album) []common.Album {
 		result = append(result, album)
 	}
 	return result
-}
-
-func hasDirectVACredit(album common.Album) bool {
-	for _, artistID := range album.ForeignArtistIDs {
-		if artistID == musicbrainz.VariousArtistsID {
-			return true
-		}
-	}
-	return false
 }
 
 func mergeDiscoveredGroup(
