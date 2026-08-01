@@ -14,15 +14,12 @@ services:
       - LIDARR_UTILS_APP_DRY_RUN=true
       - LIDARR_UTILS_APP_LOG_LEVEL=info
 
-      # Schedule settings (for scheduled runs)
-      - LIDARR_UTILS_SCHEDULE_ENABLED=false
-      - LIDARR_UTILS_SCHEDULE_CRON=0 2 * * *
-      - LIDARR_UTILS_SCHEDULE_RUN_ONCE=true
+      # Dedupe schedule settings
+      - LIDARR_UTILS_DEDUPE_SCHEDULE_ENABLED=true
+      - LIDARR_UTILS_DEDUPE_SCHEDULE_CRON=0 2 * * *
+      - LIDARR_UTILS_DEDUPE_SCHEDULE_RUN_ON_START=true
 
       # Timezone
       - TZ=America/New_York
 
-    command: ["dedupe", "--config=/app/config/config.yaml"]
-
-    # Uncomment to run on a schedule instead of once
-    # command: ["dedupe", "--config=/app/config/config.yaml", "--cron=0 2 * * *"]
+    command: ["schedule", "--config=/app/config/config.yaml"]
