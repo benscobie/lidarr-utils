@@ -1,4 +1,4 @@
-# End-to-end test design
+# Real Lidarr end-to-end tests
 
 ## Purpose
 
@@ -11,20 +11,35 @@ The suite is separate from `go test ./...`. Unit tests remain the fast source
 of coverage for decision branches and error cases; these tests protect the
 contracts between the compiled CLI and real Lidarr behavior.
 
+## Prerequisites
+
+- Bash
+- Docker Engine with the Docker Compose v2 plugin
+- Network access while Docker pulls the pinned images and the runner build
+  downloads Go modules
+
+The running stack itself uses an internal Docker network. It does not call
+live MusicBrainz, Lidarr metadata, indexer, or download-client services.
+
 ## Entry point
 
 `./e2e/run.sh` is the single local and CI entry point. With no arguments it
 runs all scenarios in parallel. Passing one scenario name runs only that
 scenario for debugging:
 
-```text
+```bash
 ./e2e/run.sh
 ./e2e/run.sh monitor-artist
 ./e2e/run.sh monitor-labels
 ./e2e/run.sh dedupe
+./e2e/run.sh smoke
+./e2e/run.sh catalog-smoke
 ```
 
-The script returns non-zero if any scenario fails.
+With no arguments the script runs the three workflow scenarios. An explicit
+scenario is useful for debugging, while `smoke` checks only service readiness
+and `catalog-smoke` verifies catalogue setup. The script returns non-zero if
+setup, orchestration, post-suite checks, or any scenario fails.
 
 ## Isolation and parallelism
 
@@ -46,6 +61,11 @@ public metadata APIs after their images have been built or pulled. As the suite
 grows, new scenarios share this stack by default. A test that must mutate
 global Lidarr configuration belongs in the serial setup phase or behind an
 explicit suite-wide synchronization point.
+
+Each worker writes a ready marker before waiting at the shared start barrier.
+The runner releases all ready workers together and waits for every process,
+even when one has already failed. Thus a failure in one scenario does not hide
+results from the others.
 
 ## Stack
 
@@ -152,12 +172,48 @@ No fixture or test may contact live Lidarr metadata, MusicBrainz, indexers, or
 download clients. Search commands need only be accepted into Lidarr's command
 queue; successful downloading is outside this suite.
 
+The repository-owned fixture layout is:
+
+```text
+e2e/fixtures/
+├── lidarr/artist/       # artist catalogue responses
+├── lidarr/album/        # release and track responses
+├── musicbrainz/         # label release paging responses
+├── health.json          # fixture-service health response
+└── nginx.conf           # deterministic route mapping and access log
+```
+
+Stable synthetic IDs are declared in `e2e/runner/ids.sh`. Tagged audio is
+generated at runtime by `e2e/runner/seed-audio.sh`, so binary media is not
+stored in Git.
+
+## Failure debugging
+
+Successful runs remove their temporary artifact directory. Failed runs retain
+`e2e/artifacts/<compose-project>/` and print that path. It contains:
+
+- one `.stdout`, `.stderr`, and `.status` file per scenario;
+- orchestration output and status from the shared barrier; and
+- `compose.log`, containing Lidarr and fixture-service logs captured before
+  teardown.
+
+Rerun a single scenario with `./e2e/run.sh <scenario>`. Set
+`E2E_PROJECT_NAME` when you want a predictable artifact directory, for
+example:
+
+```bash
+E2E_PROJECT_NAME=lidarr-utils-debug ./e2e/run.sh monitor-labels
+```
+
+The harness always removes its containers, network, and named volumes. A new
+run with the same project name clears old artifacts before starting, so output
+cannot be mistaken for the current result.
+
 ## Continuous integration
 
-The existing CI workflow gains one `e2e` job. It starts the shared stack and
-runs `monitor-artist`, `monitor-labels`, and `dedupe` concurrently inside that
-job. It runs for pull requests and pushes already covered by the workflow,
-uses a job timeout, and uploads the suite artifacts when any scenario fails.
+The CI workflow has one `e2e` job. It starts the shared stack and runs
+`monitor-artist`, `monitor-labels`, and `dedupe` concurrently inside that job.
+It has a 15-minute timeout and uploads `e2e/artifacts/` when the job fails.
 
 The existing Go quality and production-image build jobs remain independent.
 No E2E scenario is folded into `go test ./...`, and no production Go behavior

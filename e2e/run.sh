@@ -30,6 +30,9 @@ done
 
 project_name=${E2E_PROJECT_NAME:-lidarr-utils-e2e-$(date +%s)-$$}
 artifact_dir="$repo_root/e2e/artifacts/$project_name"
+if [[ -e "$artifact_dir" ]]; then
+  rm -rf "$artifact_dir"
+fi
 mkdir -p "$artifact_dir"
 artifact_dir=$(cd "$artifact_dir" && pwd)
 export E2E_ARTIFACT_DIR=$artifact_dir

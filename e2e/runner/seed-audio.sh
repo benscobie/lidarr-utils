@@ -94,10 +94,6 @@ seed_audio() {
   mkdir -p /work/dedupe
   printf 'DEDUPE_ALBUM_FILE=%q\nDEDUPE_SINGLE_FILE=%q\n' "$album_file" "$single_file" > /work/dedupe/audio.env
 
-  monitor_payload=$(jq -n --argjson album "$album_id" --argjson single "$single_id" \
-    '{albumIds: [$album, $single], monitored: true}')
-  lidarr_api PUT /api/v1/album/monitor "$monitor_payload" >/dev/null
-
   response=$(curl \
     --silent \
     --show-error \
@@ -116,5 +112,12 @@ seed_audio() {
   wait_until "RescanFolders command" 120 command_completed "$command_id" >/dev/null
   wait_until "Dedupe Album audio import" 60 audio_imported "$album_id" >/dev/null
   wait_until "Duplicate Single audio import" 60 audio_imported "$single_id" >/dev/null
+
+  # Adding an artist starts asynchronous post-add monitoring actions. Apply the
+  # scenario's desired state only after the rescan and import have completed so
+  # those actions cannot restore the original monitor-none setting afterward.
+  monitor_payload=$(jq -n --argjson album "$album_id" --argjson single "$single_id" \
+    '{albumIds: [$album, $single], monitored: true}')
+  lidarr_api PUT /api/v1/album/monitor "$monitor_payload" >/dev/null
   log "tagged audio seed passed"
 }
