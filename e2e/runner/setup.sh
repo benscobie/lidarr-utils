@@ -79,7 +79,7 @@ add_artist() {
 }
 
 catalogue_ready() {
-  local albums count
+  local albums count album_id album_title tracks
   albums=$(lidarr_api GET /api/v1/album) || return 1
   count=$(jq \
     --arg one "$MONITOR_PREFERRED_RG_MBID" \
@@ -96,6 +96,24 @@ catalogue_ready() {
     jq -c '[.[] | {title, foreignAlbumId}]' <<<"$albums"
     return 1
   }
+
+  while IFS=$'\t' read -r album_id album_title; do
+    tracks=$(lidarr_api GET "/api/v1/track?albumId=$album_id") || return 1
+    [[ $(jq 'length' <<<"$tracks") -gt 0 ]] || {
+      printf '%s has no hydrated tracks' "$album_title"
+      return 1
+    }
+  done < <(jq -r \
+    --arg one "$MONITOR_PREFERRED_RG_MBID" \
+    --arg two "$MONITOR_COVERED_RG_MBID" \
+    --arg three "$LABEL_ALBUM_RG_MBID" \
+    --arg four "$LABEL_UNRELATED_RG_MBID" \
+    --arg five "$DEDUPE_ALBUM_RG_MBID" \
+    --arg six "$DEDUPE_SINGLE_RG_MBID" \
+    '.[] | select(.foreignAlbumId == $one or .foreignAlbumId == $two or
+                  .foreignAlbumId == $three or .foreignAlbumId == $four or
+                  .foreignAlbumId == $five or .foreignAlbumId == $six) |
+     [.id, .title] | @tsv' <<<"$albums")
 }
 
 write_cli_config() {
