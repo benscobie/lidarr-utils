@@ -4,6 +4,8 @@
 source /e2e/runner/lib.sh
 # shellcheck source=ids.sh
 source /e2e/runner/ids.sh
+# shellcheck source=seed-audio.sh
+source /e2e/runner/seed-audio.sh
 
 configure_metadata_source() {
   local config updated actual
@@ -171,5 +173,6 @@ setup_suite() {
   write_cli_config monitor-artist
   write_cli_config monitor-labels
   write_cli_config dedupe
+  seed_audio
   log "catalogue setup passed"
 }

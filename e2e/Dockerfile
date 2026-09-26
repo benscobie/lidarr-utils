@@ -10,7 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /out/lida
 
 FROM alpine:latest@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 
-RUN apk --no-cache add bash ca-certificates curl ffmpeg jq tzdata xmlstarlet
+RUN apk --no-cache add bash ca-certificates curl ffmpeg jq su-exec tzdata xmlstarlet
 
 COPY --from=builder /out/lidarr-utils /usr/local/bin/lidarr-utils
 COPY e2e /e2e
