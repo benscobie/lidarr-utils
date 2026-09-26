@@ -160,6 +160,17 @@ monitor:
 EOF
 }
 
+setup_includes_scenario() {
+  local wanted=$1
+  shift
+  local scenario
+
+  for scenario in "$@"; do
+    [[ "$scenario" == "$wanted" ]] && return 0
+  done
+  return 1
+}
+
 setup_suite() {
   log "configuring deterministic Lidarr catalogue"
   chown 1001:1001 /music
@@ -173,6 +184,8 @@ setup_suite() {
   write_cli_config monitor-artist
   write_cli_config monitor-labels
   write_cli_config dedupe
-  seed_audio
+  if setup_includes_scenario dedupe "$@"; then
+    seed_audio
+  fi
   log "catalogue setup passed"
 }

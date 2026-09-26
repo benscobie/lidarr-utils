@@ -29,12 +29,23 @@ for scenario in "${scenarios[@]}"; do
 done
 
 project_name=${E2E_PROJECT_NAME:-lidarr-utils-e2e-$(date +%s)-$$}
-artifact_dir="$repo_root/e2e/artifacts/$project_name"
+if [[ ! "$project_name" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+  printf 'invalid E2E_PROJECT_NAME: %s\n' "$project_name" >&2
+  exit 2
+fi
+
+artifact_root="$repo_root/e2e/artifacts"
+mkdir -p "$artifact_root"
+artifact_root=$(cd "$artifact_root" && pwd -P)
+artifact_dir=$(realpath -m -- "$artifact_root/$project_name")
+if [[ "$artifact_dir" != "$artifact_root/"* ]]; then
+  printf 'artifact path escapes artifact root: %s\n' "$artifact_dir" >&2
+  exit 2
+fi
 if [[ -e "$artifact_dir" ]]; then
   rm -rf "$artifact_dir"
 fi
 mkdir -p "$artifact_dir"
-artifact_dir=$(cd "$artifact_dir" && pwd)
 export E2E_ARTIFACT_DIR=$artifact_dir
 
 compose=(docker compose --project-name "$project_name" --file "$compose_file")

@@ -177,7 +177,7 @@ main() {
   if !(($# == 1)) || [[ $1 != smoke ]]; then
     # shellcheck source=setup.sh
     source "$runner_dir/setup.sh"
-    setup_suite
+    setup_suite "$@"
   fi
 
   run_scenarios "$@"
