@@ -1,0 +1,53 @@
+{
+  "genres": [],
+  "aristUrl": "",
+  "overview": "Synthetic E2E fixture",
+  "type": "Person",
+  "disambiguation": "",
+  "id": "22222222-2222-4222-8222-222222222221",
+  "oldIds": [],
+  "images": [],
+  "links": [],
+  "artistName": "Label Artist",
+  "artistAliases": [],
+  "albums": [
+    {
+      "artistId": "22222222-2222-4222-8222-222222222221",
+      "artists": [],
+      "disambiguation": "",
+      "overview": "Synthetic E2E fixture",
+      "id": "22222222-2222-4222-8222-222222222223",
+      "oldIds": [],
+      "images": [],
+      "links": [],
+      "genres": [],
+      "rating": {"count": 0, "value": 0},
+      "releaseDate": "2020-02-01T00:00:00Z",
+      "releases": null,
+      "secondaryTypes": [],
+      "title": "Label Album",
+      "type": "Album",
+      "releaseStatuses": ["Official"]
+    },
+    {
+      "artistId": "22222222-2222-4222-8222-222222222221",
+      "artists": [],
+      "disambiguation": "",
+      "overview": "Synthetic E2E fixture",
+      "id": "22222222-2222-4222-8222-222222222224",
+      "oldIds": [],
+      "images": [],
+      "links": [],
+      "genres": [],
+      "rating": {"count": 0, "value": 0},
+      "releaseDate": "2021-02-01T00:00:00Z",
+      "releases": null,
+      "secondaryTypes": [],
+      "title": "Unrelated Album",
+      "type": "Album",
+      "releaseStatuses": ["Official"]
+    }
+  ],
+  "status": "continuing",
+  "rating": {"count": 0, "value": 0}
+}

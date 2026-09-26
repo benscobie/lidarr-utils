@@ -1,0 +1,53 @@
+{
+  "genres": [],
+  "aristUrl": "",
+  "overview": "Synthetic E2E fixture",
+  "type": "Group",
+  "disambiguation": "",
+  "id": "33333333-3333-4333-8333-333333333331",
+  "oldIds": [],
+  "images": [],
+  "links": [],
+  "artistName": "Dedupe Artist",
+  "artistAliases": [],
+  "albums": [
+    {
+      "artistId": "33333333-3333-4333-8333-333333333331",
+      "artists": [],
+      "disambiguation": "",
+      "overview": "Synthetic E2E fixture",
+      "id": "33333333-3333-4333-8333-333333333332",
+      "oldIds": [],
+      "images": [],
+      "links": [],
+      "genres": [],
+      "rating": {"count": 0, "value": 0},
+      "releaseDate": "2020-03-01T00:00:00Z",
+      "releases": null,
+      "secondaryTypes": [],
+      "title": "Dedupe Album",
+      "type": "Album",
+      "releaseStatuses": ["Official"]
+    },
+    {
+      "artistId": "33333333-3333-4333-8333-333333333331",
+      "artists": [],
+      "disambiguation": "",
+      "overview": "Synthetic E2E fixture",
+      "id": "33333333-3333-4333-8333-333333333333",
+      "oldIds": [],
+      "images": [],
+      "links": [],
+      "genres": [],
+      "rating": {"count": 0, "value": 0},
+      "releaseDate": "2021-03-01T00:00:00Z",
+      "releases": null,
+      "secondaryTypes": [],
+      "title": "Duplicate Single",
+      "type": "Single",
+      "releaseStatuses": ["Official"]
+    }
+  ],
+  "status": "continuing",
+  "rating": {"count": 0, "value": 0}
+}

@@ -29,6 +29,12 @@ lidarr_ready() {
 
 wait_until "Lidarr API" 180 lidarr_ready >/dev/null
 
+if !(($# == 1)) || [[ $1 != smoke ]]; then
+  # shellcheck source=setup.sh
+  source /e2e/runner/setup.sh
+  setup_suite
+fi
+
 for scenario in "$@"; do
   log "running $scenario"
   "/e2e/runner/scenarios/$scenario.sh"

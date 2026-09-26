@@ -1,0 +1,18 @@
+{
+  "artistId": "22222222-2222-4222-8222-222222222221",
+  "artists": [{"genres": [], "overview": "Synthetic E2E fixture", "type": "Person", "disambiguation": "", "id": "22222222-2222-4222-8222-222222222221", "oldIds": [], "images": [], "links": [], "artistName": "Label Artist", "artistAliases": [], "albums": [], "status": "continuing", "rating": {"count": 0, "value": 0}}],
+  "disambiguation": "",
+  "overview": "Synthetic E2E fixture",
+  "id": "22222222-2222-4222-8222-222222222223",
+  "oldIds": [],
+  "images": [],
+  "links": [],
+  "genres": [],
+  "rating": {"count": 0, "value": 0},
+  "releaseDate": "2020-02-01T00:00:00Z",
+  "releases": [{"disambiguation": "", "country": ["XW"], "releaseDate": "2020-02-01T00:00:00Z", "id": "22222222-2222-4222-8222-222222222225", "oldIds": [], "label": ["Fixture Label"], "media": [{"name": "Digital Media 1", "format": "Digital Media", "position": 1}], "title": "Label Album", "status": "Official", "trackCount": 1, "tracks": [{"artistId": "22222222-2222-4222-8222-222222222221", "durationMs": 1000, "id": "22222222-2222-4222-8222-222222222227", "oldIds": [], "recordingId": "22222222-2222-4222-8222-222222222229", "oldRecordingIds": [], "trackName": "Label Song", "trackNumber": "1", "trackPosition": 1, "explicit": false, "mediumNumber": 1}]}],
+  "secondaryTypes": [],
+  "title": "Label Album",
+  "type": "Album",
+  "releaseStatuses": ["Official"]
+}
