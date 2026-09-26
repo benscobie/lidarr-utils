@@ -1,6 +1,6 @@
 module github.com/benscobie/lidarr-utils
 
-go 1.26.5
+go 1.27.1
 
 require (
 	github.com/robfig/cron/v3 v3.0.1
