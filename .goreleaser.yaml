@@ -32,6 +32,10 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+release:
+  preflight:
+    fail_on_error: true
+
 changelog:
   sort: asc
   groups:
@@ -54,6 +58,13 @@ dockers_v2:
       - "{{ .Version }}"
       - '{{ if eq .Prerelease "" }}{{ .Major }}{{ end }}'
     dockerfile: Dockerfile.goreleaser
+    annotations:
+      "index,manifest:org.opencontainers.image.source": "https://github.com/benscobie/lidarr-utils"
+      "index,manifest:org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "index,manifest:org.opencontainers.image.version": "{{ .Version }}"
+      "index,manifest:org.opencontainers.image.licenses": "MIT"
+      "index,manifest:org.opencontainers.image.base.name": "{{ .BaseImage }}"
+      "index,manifest:org.opencontainers.image.base.digest": "{{ .BaseImageDigest }}"
     extra_files:
       - config.example.yaml
     platforms:
