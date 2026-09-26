@@ -3,11 +3,16 @@ set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 test_dir=$(mktemp -d)
-outside_dir="$repo_root/e2e/run-test-outside"
-artifact_link="$repo_root/e2e/artifacts/run-test-symlink"
-trap 'rm -rf "$test_dir" "$outside_dir" "$artifact_link"' EXIT
+outside_dir=$(mktemp -d "$repo_root/e2e/run-test-outside.XXXXXX")
+artifact_root="$repo_root/e2e/artifacts"
+artifact_link=''
+cleanup() {
+  rm -rf "$test_dir" "$outside_dir"
+  [[ -z "$artifact_link" ]] || rm -rf "$artifact_link"
+}
+trap cleanup EXIT
 
-mkdir -p "$test_dir/bin" "$outside_dir"
+mkdir -p "$test_dir/bin" "$artifact_root"
 printf 'must survive\n' >"$outside_dir/sentinel"
 
 cat >"$test_dir/bin/docker" <<'EOF'
@@ -18,7 +23,7 @@ chmod +x "$test_dir/bin/docker"
 
 export FAKE_DOCKER_MARKER="$test_dir/docker-invoked"
 set +e
-output=$(PATH="$test_dir/bin:$PATH" E2E_PROJECT_NAME=../run-test-outside "$repo_root/e2e/run.sh" smoke 2>&1)
+output=$(PATH="$test_dir/bin:$PATH" E2E_PROJECT_NAME="../$(basename "$outside_dir")" "$repo_root/e2e/run.sh" smoke 2>&1)
 status=$?
 set -e
 
@@ -38,10 +43,15 @@ grep -q 'invalid E2E_PROJECT_NAME' <<<"$output"
 
 mkdir -p "$test_dir/symlink-target"
 printf 'must also survive\n' >"$test_dir/symlink-target/sentinel"
+artifact_link="$artifact_root/run-test-symlink_$$-$RANDOM"
+while ! mkdir "$artifact_link" 2>/dev/null; do
+  artifact_link="$artifact_root/run-test-symlink_$$-$RANDOM"
+done
+rmdir "$artifact_link"
 ln -s "$test_dir/symlink-target" "$artifact_link"
 
 set +e
-output=$(PATH="$test_dir/bin:$PATH" E2E_PROJECT_NAME=run-test-symlink "$repo_root/e2e/run.sh" smoke 2>&1)
+output=$(PATH="$test_dir/bin:$PATH" E2E_PROJECT_NAME="$(basename "$artifact_link")" "$repo_root/e2e/run.sh" smoke 2>&1)
 status=$?
 set -e
 
