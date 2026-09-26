@@ -34,7 +34,7 @@ func runArtistJob(cfg *config.Config, artistRefs []string) error {
 
 	var mbClient *musicbrainz.Client
 	if cfg.Monitor.Artists.Selection.CompilationSingles == config.CompilationSinglesExclude {
-		mbClient = musicbrainz.NewClient(version)
+		mbClient = newMusicBrainzClient(cfg)
 	}
 	mon := monitor.NewMonitor(monitor.MonitorOptions{
 		Client:   client,

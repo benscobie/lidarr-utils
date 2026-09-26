@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-func newTestClient() *Client {
-	client := NewClient("test")
+func newTestClient(baseURL string) *Client {
+	client := NewClientWithBaseURL("test", baseURL)
 	client.minRequestInterval = 0
 	client.sleep = func(_ time.Duration) {}
 	return client
@@ -16,6 +16,9 @@ func newTestClient() *Client {
 
 func TestVACompilationSource_Found(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/release-group/test-rg-id" {
+			t.Fatalf("request path = %q, want /release-group/test-rg-id", r.URL.Path)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{
@@ -40,8 +43,7 @@ func TestVACompilationSource_Found(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newTestClient()
-	c.baseURL = srv.URL
+	c := newTestClient(srv.URL + "/")
 
 	title, err := c.VACompilationSource("test-rg-id")
 	if err != nil {
@@ -78,8 +80,7 @@ func TestVACompilationSource_NotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newTestClient()
-	c.baseURL = srv.URL
+	c := newTestClient(srv.URL)
 
 	title, err := c.VACompilationSource("test-rg-id")
 	if err != nil {
@@ -98,8 +99,7 @@ func TestVACompilationSource_NoRelations(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newTestClient()
-	c.baseURL = srv.URL
+	c := newTestClient(srv.URL)
 
 	title, err := c.VACompilationSource("test-rg-id")
 	if err != nil {
@@ -116,8 +116,7 @@ func TestVACompilationSource_APIError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newTestClient()
-	c.baseURL = srv.URL
+	c := newTestClient(srv.URL)
 
 	_, err := c.VACompilationSource("test-rg-id")
 	if err == nil {
