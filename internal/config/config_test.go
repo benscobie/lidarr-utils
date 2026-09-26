@@ -81,6 +81,49 @@ func TestLoadConfigDefaultsLogLevel(t *testing.T) {
 	}
 }
 
+func TestLoadConfigMusicBrainzDefault(t *testing.T) {
+	cfg, err := LoadConfig(writeConfig(t, validMinimalYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MusicBrainz.URL != "https://musicbrainz.org/ws/2" {
+		t.Fatalf("musicbrainz.url = %q, want production endpoint", cfg.MusicBrainz.URL)
+	}
+}
+
+func TestLoadConfigMusicBrainzYAMLOverride(t *testing.T) {
+	cfg, err := LoadConfig(writeConfig(t, `
+lidarr:
+  url: http://lidarr:8686
+  api_key: secret
+musicbrainz:
+  url: http://musicbrainz-fixture:8080/ws/2
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MusicBrainz.URL != "http://musicbrainz-fixture:8080/ws/2" {
+		t.Fatalf("musicbrainz.url = %q, want YAML endpoint", cfg.MusicBrainz.URL)
+	}
+}
+
+func TestLoadConfigMusicBrainzEnvironmentOverride(t *testing.T) {
+	t.Setenv("LIDARR_UTILS_MUSICBRAINZ_URL", "http://musicbrainz-env:8080/ws/2")
+	cfg, err := LoadConfig(writeConfig(t, `
+lidarr:
+  url: http://lidarr:8686
+  api_key: secret
+musicbrainz:
+  url: http://musicbrainz-yaml:8080/ws/2
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MusicBrainz.URL != "http://musicbrainz-env:8080/ws/2" {
+		t.Fatalf("musicbrainz.url = %q, want environment endpoint", cfg.MusicBrainz.URL)
+	}
+}
+
 func TestLoadConfigNormalizesLogLevel(t *testing.T) {
 	cfg, err := LoadConfig(writeConfig(t, `
 lidarr:

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -25,9 +26,13 @@ type Client struct {
 }
 
 func NewClient(version string) *Client {
+	return NewClientWithBaseURL(version, defaultBaseURL)
+}
+
+func NewClientWithBaseURL(version, baseURL string) *Client {
 	return &Client{
 		httpClient:         &http.Client{Timeout: 30 * time.Second},
-		baseURL:            defaultBaseURL,
+		baseURL:            strings.TrimRight(baseURL, "/"),
 		userAgent:          fmt.Sprintf("LidarrUtils/%s ( https://github.com/benscobie/lidarr-utils )", version),
 		minRequestInterval: time.Second,
 		sleep:              time.Sleep,

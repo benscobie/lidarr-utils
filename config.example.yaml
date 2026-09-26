@@ -6,6 +6,10 @@ lidarr:
   url: "http://localhost:8686"  # Your Lidarr URL
   api_key: "your-api-key-here"  # Your Lidarr API key
 
+# MusicBrainz connection settings
+musicbrainz:
+  url: "https://musicbrainz.org/ws/2"  # Override for a proxy or local test fixture
+
 # Application settings
 app:
   dry_run: false                  # Set to true for a dry run (preview only)

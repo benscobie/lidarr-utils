@@ -18,7 +18,10 @@ func TestLabelReleaseGroupsPagesAndMergesEditions(t *testing.T) {
 		readFixture(t, "1985-music-page-2.json"),
 	}
 	requests := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/release" {
+			t.Fatalf("request path = %q, want /release", r.URL.Path)
+		}
 		if requests >= len(pages) {
 			t.Fatalf("unexpected request %d", requests+1)
 		}
@@ -28,8 +31,7 @@ func TestLabelReleaseGroupsPagesAndMergesEditions(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient("test")
-	client.baseURL = srv.URL
+	client := NewClientWithBaseURL("test", srv.URL+"/")
 	client.minRequestInterval = 0
 
 	result, err := client.LabelReleaseGroups(testLabelID)
@@ -62,8 +64,7 @@ func TestLabelReleaseGroupsDistinguishesMissingFromEmpty(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		client := NewClient("test")
-		client.baseURL = srv.URL
+		client := NewClientWithBaseURL("test", srv.URL)
 		client.minRequestInterval = 0
 
 		_, err := client.LabelReleaseGroups(testLabelID)
@@ -79,8 +80,7 @@ func TestLabelReleaseGroupsDistinguishesMissingFromEmpty(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		client := NewClient("test")
-		client.baseURL = srv.URL
+		client := NewClientWithBaseURL("test", srv.URL)
 		client.minRequestInterval = 0
 
 		result, err := client.LabelReleaseGroups(testLabelID)
@@ -106,8 +106,7 @@ func TestLabelReleaseGroupsRetriesTransientFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient("test")
-	client.baseURL = srv.URL
+	client := NewClientWithBaseURL("test", srv.URL)
 	client.minRequestInterval = 0
 	client.sleep = func(_ time.Duration) {}
 

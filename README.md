@@ -66,6 +66,9 @@ lidarr:
   url: "http://localhost:8686"
   api_key: "your-api-key-here"
 
+musicbrainz:
+  url: "https://musicbrainz.org/ws/2"
+
 app:
   dry_run: false
   log_level: "info"
@@ -112,16 +115,20 @@ monitor:
       run_on_start: false
 ```
 
+`musicbrainz.url` defaults to the public MusicBrainz API. Override it to use
+a compatible proxy or a local fixture service for testing.
+
 ### Environment variables
 
 The following environment variables are explicitly supported:
 
-#### Lidarr and application
+#### Lidarr, MusicBrainz, and application
 
 | Environment variable | Configuration key |
 |---|---|
 | `LIDARR_UTILS_LIDARR_URL` | `lidarr.url` |
 | `LIDARR_UTILS_LIDARR_API_KEY` | `lidarr.api_key` |
+| `LIDARR_UTILS_MUSICBRAINZ_URL` | `musicbrainz.url` |
 | `LIDARR_UTILS_APP_DRY_RUN` | `app.dry_run` |
 | `LIDARR_UTILS_APP_LOG_LEVEL` | `app.log_level` |
 | `LIDARR_UTILS_APP_LOG_FILE` | `app.log_file` |

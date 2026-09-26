@@ -12,15 +12,20 @@ import (
 )
 
 type Config struct {
-	Lidarr  LidarrConfig  `mapstructure:"lidarr"`
-	App     AppConfig     `mapstructure:"app"`
-	Dedupe  DedupeConfig  `mapstructure:"dedupe"`
-	Monitor MonitorConfig `mapstructure:"monitor"`
+	Lidarr      LidarrConfig      `mapstructure:"lidarr"`
+	MusicBrainz MusicBrainzConfig `mapstructure:"musicbrainz"`
+	App         AppConfig         `mapstructure:"app"`
+	Dedupe      DedupeConfig      `mapstructure:"dedupe"`
+	Monitor     MonitorConfig     `mapstructure:"monitor"`
 }
 
 type LidarrConfig struct {
 	URL    string `mapstructure:"url"`
 	APIKey string `mapstructure:"api_key"`
+}
+
+type MusicBrainzConfig struct {
+	URL string `mapstructure:"url"`
 }
 
 type AppConfig struct {
@@ -80,6 +85,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	bindings := map[string]string{
 		"lidarr.url":                                 "LIDARR_UTILS_LIDARR_URL",
 		"lidarr.api_key":                             "LIDARR_UTILS_LIDARR_API_KEY",
+		"musicbrainz.url":                            "LIDARR_UTILS_MUSICBRAINZ_URL",
 		"app.dry_run":                                "LIDARR_UTILS_APP_DRY_RUN",
 		"app.log_level":                              "LIDARR_UTILS_APP_LOG_LEVEL",
 		"app.log_file":                               "LIDARR_UTILS_APP_LOG_FILE",
@@ -127,6 +133,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	// Set defaults
+	v.SetDefault("musicbrainz.url", "https://musicbrainz.org/ws/2")
 	v.SetDefault("app.dry_run", false)
 	v.SetDefault("app.log_level", "info")
 	v.SetDefault("app.log_file", "lidarr-utils.log")

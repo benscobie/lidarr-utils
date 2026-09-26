@@ -8,7 +8,6 @@ import (
 
 	"github.com/benscobie/lidarr-utils/internal/config"
 	"github.com/benscobie/lidarr-utils/internal/monitor"
-	"github.com/benscobie/lidarr-utils/internal/musicbrainz"
 )
 
 var labelMonitorCmd = &cobra.Command{
@@ -54,7 +53,7 @@ func runLabelJob(cfg *config.Config, labelArgs []string) error {
 	mon := monitor.NewMonitor(monitor.MonitorOptions{
 		Client:   client,
 		DryRun:   cfg.App.DryRun,
-		MBClient: musicbrainz.NewClient(version),
+		MBClient: newMusicBrainzClient(cfg),
 		State:    st,
 	})
 	options := monitor.LabelOptions{
