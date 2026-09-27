@@ -56,3 +56,29 @@ jobs:
 
       - name: Build production image
         run: docker buildx build --file Dockerfile .
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Test E2E harness
+        run: |
+          bash e2e/runner/tests/dockerfile_test.sh
+          bash e2e/runner/tests/lib_test.sh
+          bash e2e/runner/tests/parallel_test.sh
+          bash e2e/runner/tests/run_test.sh
+
+      - name: Run real Lidarr E2E suite
+        run: ./e2e/run.sh
+
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lidarr-e2e-failure
+          path: e2e/artifacts/
+          if-no-files-found: ignore

@@ -1,0 +1,18 @@
+{
+  "artistId": "33333333-3333-4333-8333-333333333331",
+  "artists": [{"genres": [], "overview": "Synthetic E2E fixture", "type": "Group", "disambiguation": "", "id": "33333333-3333-4333-8333-333333333331", "oldIds": [], "images": [], "links": [], "artistName": "Dedupe Artist", "artistAliases": [], "albums": [], "status": "continuing", "rating": {"count": 0, "value": 0}}],
+  "disambiguation": "",
+  "overview": "Synthetic E2E fixture",
+  "id": "33333333-3333-4333-8333-333333333332",
+  "oldIds": [],
+  "images": [],
+  "links": [],
+  "genres": [],
+  "rating": {"count": 0, "value": 0},
+  "releaseDate": "2020-03-01T00:00:00Z",
+  "releases": [{"disambiguation": "", "country": ["XW"], "releaseDate": "2020-03-01T00:00:00Z", "id": "33333333-3333-4333-8333-333333333334", "oldIds": [], "label": ["E2E"], "media": [{"name": "Digital Media 1", "format": "Digital Media", "position": 1}], "title": "Dedupe Album", "status": "Official", "trackCount": 1, "tracks": [{"artistId": "33333333-3333-4333-8333-333333333331", "durationMs": 1000, "id": "33333333-3333-4333-8333-333333333336", "oldIds": [], "recordingId": "33333333-3333-4333-8333-333333333338", "oldRecordingIds": [], "trackName": "Duplicate Song", "trackNumber": "1", "trackPosition": 1, "explicit": false, "mediumNumber": 1}]}],
+  "secondaryTypes": [],
+  "title": "Dedupe Album",
+  "type": "Album",
+  "releaseStatuses": ["Official"]
+}

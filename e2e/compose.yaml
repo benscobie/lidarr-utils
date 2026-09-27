@@ -1,0 +1,60 @@
+services:
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:3.1.0.4875-ls42@sha256:044d616beb43c5e7810991242c6a9c42b93ff238c8c0850684939634ea751208
+    environment:
+      PUID: "1001"
+      PGID: "1001"
+      TZ: UTC
+    volumes:
+      - lidarr-config:/config
+      - music:/music
+    networks:
+      - e2e
+
+  fixtures:
+    image: nginx:1.29.1-alpine@sha256:42a516af16b852e33b7682d5ef8acbd5d13fe08fecadc7ed98605ba5e3b26ab8
+    command:
+      - /bin/sh
+      - -c
+      - mkdir -p /work/fixtures && exec nginx -g 'daemon off;'
+    volumes:
+      - ./fixtures:/fixtures:ro
+      - ./fixtures/nginx.conf:/etc/nginx/nginx.conf:ro
+      - work:/work
+    networks:
+      - e2e
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health.json"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  runner:
+    build:
+      context: ..
+      dockerfile: e2e/Dockerfile
+    user: "0:0"
+    depends_on:
+      fixtures:
+        condition: service_healthy
+      lidarr:
+        condition: service_started
+    environment:
+      LIDARR_URL: http://lidarr:8686
+      E2E_ARTIFACT_DIR: /artifacts
+    volumes:
+      - lidarr-config:/config
+      - music:/music
+      - work:/work
+      - ${E2E_ARTIFACT_DIR:-./artifacts/manual}:/artifacts
+    networks:
+      - e2e
+
+networks:
+  e2e:
+    internal: true
+
+volumes:
+  lidarr-config:
+  music:
+  work:

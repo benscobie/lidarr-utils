@@ -53,6 +53,7 @@ state.json
 
 # Docker artifacts
 .dockerignore
+e2e/artifacts/
 
 # Environment files
 .env
