@@ -2,17 +2,16 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+# shellcheck source=../host-lib.sh
+source "$repo_root/e2e/runner/host-lib.sh"
 test_dir=$(mktemp -d)
 outside_dir=$(mktemp -d "$repo_root/e2e/run-test-outside.XXXXXX")
-artifact_root="$repo_root/e2e/artifacts"
-artifact_link=''
 cleanup() {
   rm -rf "$test_dir" "$outside_dir"
-  [[ -z "$artifact_link" ]] || rm -rf "$artifact_link"
 }
 trap cleanup EXIT
 
-mkdir -p "$test_dir/bin" "$artifact_root"
+mkdir -p "$test_dir/bin"
 printf 'must survive\n' >"$outside_dir/sentinel"
 
 cat >"$test_dir/bin/docker" <<'EOF'
@@ -41,31 +40,41 @@ grep -q 'invalid E2E_PROJECT_NAME' <<<"$output"
   exit 1
 }
 
-mkdir -p "$test_dir/symlink-target"
-printf 'must also survive\n' >"$test_dir/symlink-target/sentinel"
-artifact_link="$artifact_root/run-test-symlink_$$-$RANDOM"
-while ! mkdir "$artifact_link" 2>/dev/null; do
-  artifact_link="$artifact_root/run-test-symlink_$$-$RANDOM"
-done
-rmdir "$artifact_link"
-ln -s "$test_dir/symlink-target" "$artifact_link"
+mkdir -p "$test_dir/root-target/internal"
+printf 'root target must survive\n' >"$test_dir/root-target/internal/sentinel"
+ln -s "$test_dir/root-target" "$test_dir/root-link"
 
 set +e
-output=$(PATH="$test_dir/bin:$PATH" E2E_PROJECT_NAME="$(basename "$artifact_link")" "$repo_root/e2e/run.sh" smoke 2>&1)
+output=$(resolve_artifact_dir "$test_dir/root-link" internal 2>&1)
 status=$?
 set -e
 
 [[ $status == 2 ]] || {
-  printf 'expected escaping artifact symlink to exit 2, got %s\n%s\n' "$status" "$output" >&2
+  printf 'expected artifact-root symlink to exit 2, got %s\n%s\n' "$status" "$output" >&2
   exit 1
 }
-grep -q 'artifact path escapes artifact root' <<<"$output"
-[[ -f "$test_dir/symlink-target/sentinel" ]] || {
-  printf 'artifact symlink escaped the artifact root and deleted the sentinel\n' >&2
+grep -q 'artifact root must not be a symlink' <<<"$output"
+[[ -f "$test_dir/root-target/internal/sentinel" ]] || {
+  printf 'artifact-root symlink target was modified\n' >&2
   exit 1
 }
-[[ ! -e "$FAKE_DOCKER_MARKER" ]] || {
-  printf 'Docker was invoked before artifact-path validation\n' >&2
+
+mkdir -p "$test_dir/child-root/owned"
+printf 'child target must survive\n' >"$test_dir/child-root/owned/sentinel"
+ln -s "$test_dir/child-root/owned" "$test_dir/child-root/internal"
+
+set +e
+output=$(resolve_artifact_dir "$test_dir/child-root" internal 2>&1)
+status=$?
+set -e
+
+[[ $status == 2 ]] || {
+  printf 'expected artifact-directory symlink to exit 2, got %s\n%s\n' "$status" "$output" >&2
+  exit 1
+}
+grep -q 'artifact directory must not be a symlink' <<<"$output"
+[[ -f "$test_dir/child-root/owned/sentinel" ]] || {
+  printf 'artifact-directory symlink target was modified\n' >&2
   exit 1
 }
 

@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 compose_file="$repo_root/e2e/compose.yaml"
+# shellcheck source=runner/host-lib.sh
+source "$repo_root/e2e/runner/host-lib.sh"
 
 valid_scenario() {
   case "$1" in
@@ -29,17 +31,7 @@ for scenario in "${scenarios[@]}"; do
 done
 
 project_name=${E2E_PROJECT_NAME:-lidarr-utils-e2e-$(date +%s)-$$}
-if [[ ! "$project_name" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
-  printf 'invalid E2E_PROJECT_NAME: %s\n' "$project_name" >&2
-  exit 2
-fi
-
-artifact_root="$repo_root/e2e/artifacts"
-mkdir -p "$artifact_root"
-artifact_root=$(cd "$artifact_root" && pwd -P)
-artifact_dir=$(realpath -m -- "$artifact_root/$project_name")
-if [[ "$artifact_dir" != "$artifact_root/"* ]]; then
-  printf 'artifact path escapes artifact root: %s\n' "$artifact_dir" >&2
+if ! artifact_dir=$(resolve_artifact_dir "$repo_root/e2e/artifacts" "$project_name"); then
   exit 2
 fi
 if [[ -e "$artifact_dir" ]]; then
