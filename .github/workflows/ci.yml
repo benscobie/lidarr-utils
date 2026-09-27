@@ -67,6 +67,7 @@ jobs:
 
       - name: Test E2E harness
         run: |
+          bash e2e/runner/tests/dockerfile_test.sh
           bash e2e/runner/tests/lib_test.sh
           bash e2e/runner/tests/parallel_test.sh
           bash e2e/runner/tests/run_test.sh
